@@ -15,8 +15,8 @@ import torch.optim as optim
 
 import argparse
 from pathlib import Path
-import time
 import datetime
+import time
 import numpy as np
 import wandb
 
@@ -34,7 +34,11 @@ def get_args_parser():
     parser.add_argument('--data_path', default='', help='path to input file')
     parser.add_argument('--seed', default=42, type=int, help='random seed')
     parser.add_argument('--gpu', default='cuda:1', help='GPU id to use.')
-    parser.add_argument('--dataset', default='ISIC2019-Clean', type=str, choices=['ISIC2019-Clean', 'PH2', 'Derm7pt'], metavar='DATASET')
+
+    # Dataset
+    parser.add_argument('--dataset', default='ISIC2019-Clean', type=str, 
+                        choices=['ISIC2019-Clean', 'PH2', 'Derm7pt','DDSM+CBIS+MIAS_CLAHE-Binary', 'DDSM+CBIS+MIAS_CLAHE', 'INbreast'], metavar='DATASET')
+    parser.add_argument('--dataset_type', default='Skin', type=str, choices=['Breast', 'Skin'], metavar='DATASET')
     
     # Wanb parameters
     parser.add_argument('--project_name', default='Thesis', help='name of the project')
@@ -57,10 +61,7 @@ def get_args_parser():
     parser.add_argument('--finetune', default=False, type=bool, help='finetune or not')
     parser.add_argument('--start_epoch', default=0, type=int, metavar='N', help='start epoch')
     parser.add_argument('--classifier_warmup_epochs', type=int, default=5, metavar='N')
-    
-    parser.add_argument('--drop', type=float, default=0.0, metavar='PCT', help='drop rate (default: 0.)')
-    parser.add_argument('--drop_path', type=float, default=0.1, metavar='PCT', help='Drop path rate (default: 0.1)')
-            
+                
     # Baselines parameters
     parser.add_argument('--model', default='resnet18', type=str, metavar='MODEL',
                         choices=['resnet18', 'resnet50','vgg16', 'densenet169', 'efficientnet_b3', 'vit_small_patch16_224.augreg_in1k', 
@@ -81,8 +82,8 @@ def get_args_parser():
     parser.add_argument('--resume', default='', type=str, metavar='PATH')
         
     # Imbalanced dataset parameters
-    parser.add_argument('--class_weights', action='store_true', default=True, help='Enabling class weighting')
-    parser.add_argument('--class_weights_type', default='Manual', choices=['Median', 'Manual'], type=str, help="")
+    parser.add_argument('--class_weights', default='None', choices=['None', 'balanced', 'median'], type=str, 
+                        help="Class weights for loss function.")
     
     # Optimizer parameters 
     parser.add_argument('--opt', default='adamw', type=str, metavar='OPTIMIZER', choices=['adamw', 'sgd'],
@@ -131,17 +132,17 @@ def get_args_parser():
                         help='lower lr bound for cyclic schedulers that hit 0 (1e-5)')
 
     parser.add_argument('--cooldown_epochs', type=int, default=10, metavar='N',
-                        help='epochs to cooldown LR at min_lr, after cyclic schedule ends')
+                        help='Epochs to cooldown LR at min_lr, after cyclic schedule ends')
     parser.add_argument('--patience_epochs', type=int, default=10, metavar='N',
-                        help='patience epochs for Plateau LR scheduler (default: 10')
+                        help='Patience epochs for Plateau LR scheduler (default: 10.')
 
     # * StepLR parameters
     parser.add_argument('--decay_epochs', type=float, default=30, metavar='N',
-                        help='epoch interval to decay LR')
+                        help='epoch interval to decay LR.')
     
     # * MultiStepLRScheduler parameters
     parser.add_argument('--decay_milestones', type=List[int], nargs='+', default=(10, 15), 
-                        help='epochs at which to decay learning rate')
+                        help='Epochs at which to decay learning rate.')
     
     # * The decay rate is transversal to many schedulers | However it has a different meaning for each scheduler
     # MultiStepLR: decay factor of learning rate | PolynomialLR: power factor | ExpLR: decay factor of learning rate
@@ -186,6 +187,17 @@ def get_args_parser():
     parser.add_argument('--visualize_cls_token', action='store_true', default=False, help='Visualize the attention weights of the CLS token.')
     parser.add_argument('--pos_encoding_flag', action='store_false', default=True, help='Whether to use positional encoding or not.')
     
+    # Breast Data setup parameters
+    parser.add_argument('--loader', default='Gray_PIL_Loader_Wo_Her', type=str, metavar='LOADER', choices=['Gray_PIL_Loader', 'Gray_PIL_Loader_Wo_He'])
+    parser.add_argument('--test_val_flag', default=True, type=bool, help='If True, the test set is used as the validation set.')
+    
+    # Dropout parameters
+    parser.add_argument('--drop', type=float, default=0.0, metavar='PCT', help='Dropout rate used in the classification head (default: 0.)')
+    parser.add_argument('--pos_drop_rate', type=float, default=0.0, metavar='PCT', help='Dropout rate for the positional encoding (default: 0.)')
+    parser.add_argument('--attn_drop_rate', type=float, default=0.0, metavar='PCT', help='Dropout rate for the attention layers (default: 0.)')
+    parser.add_argument('--drop_layers_rate', type=float, default=0.0, metavar='PCT', help='Dropout rate for the layers (default: 0.)')
+    parser.add_argument('--drop_block_rate', type=float, default=0.0, metavar='PCT', help='Dropout rate for the blocks (default: 0.)')
+        
     return parser
 
 
@@ -217,8 +229,8 @@ def main(args):
         )
         wandb.run.name = args.run_name
         
-    """ if args.debug:
-        wandb=print """
+    if args.debug:
+        wandb=print
     
     if args.training: # Print arguments
         print("----------------- Args -------------------")
@@ -235,8 +247,7 @@ def main(args):
     ################## Data Setup ##################
     if args.data_path:
     
-        train_set, args.nb_classes = data_setup.build_dataset(is_train=True, args=args)
-        val_set,_ = data_setup.build_dataset(is_train=False, args=args)
+        train_set, val_set = data_setup.Build_Dataset(data_path = args.data_path, input_size=args.input_size, args=args)
         
         ## Data Loaders 
         sampler_train = torch.utils.data.RandomSampler(train_set)
@@ -259,48 +270,7 @@ def main(args):
      
     ############################ Define the Feature Extractor ############################
     
-    if args.model == 'resnet18':
-        model = torchvision.models.resnet18(weights=torchvision.models.ResNet18_Weights.IMAGENET1K_V1)
-        model.fc = nn.Linear(model.fc.in_features,args.nb_classes)
-    elif args.model == 'resnet50':
-        model = torchvision.models.resnet50(weights=torchvision.models.ResNet50_Weights.IMAGENET1K_V1)
-        model.fc = nn.Linear(model.fc.in_features,args.nb_classes)
-    elif args.model == 'vgg16': 
-        model = torchvision.models.vgg16(weights=torchvision.models.VGG16_Weights.IMAGENET1K_V1)
-        model.classifier[-1] = nn.Linear(model.classifier[-1].in_features, args.nb_classes)
-    elif args.model == 'densenet169':
-        model = torchvision.models.densenet169(weights=torchvision.models.DenseNet169_Weights.IMAGENET1K_V1)
-        model.classifier = nn.Linear(model.classifier.in_features, args.nb_classes)
-    elif args.model == 'efficientnet_b3':
-        model = torchvision.models.efficientnet_b3(weights=torchvision.models.EfficientNet_B3_Weights.IMAGENET1K_V1)
-        model.classifier[-1] = nn.Linear(model.classifier[-1].in_features, args.nb_classes)
-    elif args.model == 'vit_b_16':
-        model = torchvision.models.vit_b_16(weights=torchvision.models.ViT_B_16_Weights.IMAGENET1K_V1)
-        model.heads.head = nn.Linear(model.heads.head.in_features,args.nb_classes)
-    elif args.model == 'vit_small_patch16_224.augreg_in1k':
-        model = create_model(
-            args.model,
-            pretrained=True,
-            num_classes=args.nb_classes,
-            drop_rate=args.drop,
-            drop_path_rate=args.drop_path,
-            drop_block_rate=None,
-            img_size=args.input_size,
-            pos_encoding = args.pos_encoding_flag,
-        )
-    elif args.model == 'deit_small_patch16_224' or args.model == 'deit_base_patch16_224':
-        model = create_model(
-            args.model,
-            pretrained=False,
-            num_classes=args.nb_classes,
-            drop_rate=args.drop,
-            drop_path_rate=args.drop_path,
-            drop_block_rate=None,
-            img_size=args.input_size,
-            pos_encoding = args.pos_encoding_flag,
-        )
-    else:
-        raise NotImplementedError('This Baseline is not yet implemented!')
+    model = models.Define_Model(model=args.model, nb_classes=args.nb_classes, drop=args.drop, args=args)
      
     model.to(device)
     if args.model in models.deits_baselines:
@@ -376,6 +346,9 @@ def main(args):
         
         print(f"******* Start training for {(args.epochs + args.cooldown_epochs)} epochs. *******") 
         for epoch in range(args.start_epoch, (args.epochs + args.cooldown_epochs)):
+            
+            # Classifier Warmup
+            engine.Classifier_Warmup(model, epoch, args.warmup_epochs, args)
             
             train_stats = engine.train_step(model=model,
                                             dataloader=data_loader_train,

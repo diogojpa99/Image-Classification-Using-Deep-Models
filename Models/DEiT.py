@@ -215,7 +215,6 @@ default_cfgs = generate_default_cfgs({
     'deit3_huge_patch14_224.fb_in1k': _cfg(
         hf_hub_id='timm/',
         url='https://dl.fbaipublicfiles.com/deit/deit_3_huge_224_1k.pth'),
-
     'deit3_small_patch16_224.fb_in22k_ft_in1k': _cfg(
         hf_hub_id='timm/',
         url='https://dl.fbaipublicfiles.com/deit/deit_3_small_224_21k.pth',

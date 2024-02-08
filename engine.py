@@ -8,7 +8,7 @@ from typing import Optional
 from collections import Counter
 
 import numpy as np
-import sklearn
+from sklearn.utils.class_weight import compute_class_weight
 from sklearn.metrics import confusion_matrix, f1_score, precision_score, recall_score, accuracy_score, \
     balanced_accuracy_score
     
@@ -182,7 +182,7 @@ class EarlyStopping:
             self.best_score = score
             self.save_checkpoint(val_loss, model)
             
-        elif score < self.best_score + self.delta:
+        elif score < self.best_score - self.delta:
             # If we don't have an improvement, increase the counter 
             self.counter += 1
             #self.trace_func(f'\tEarlyStopping counter: {self.counter} out of {self.patience}')
@@ -203,29 +203,10 @@ class EarlyStopping:
         #torch.save(model.state_dict(), self.path)
         self.val_loss_min = val_loss
 
-def train_patch_extractor(model: torch.nn.Module, 
-                          current_epoch: int, 
-                          warmup_epochs: int, 
-                          flag: bool, 
-                          args
-):    
-    """ Function to train the patch extractor for the first warmup_epochs epochs.
-    Returns:
-        bool: flag that defines if the patch extractor is trainable or not.
-    """
-    if current_epoch < warmup_epochs:
-        for param in model.patch_extractor.parameters():
-            param.requires_grad = False
-        flag = True
-        
-    elif current_epoch >= warmup_epochs:
-        for param in model.patch_extractor.parameters():
-            param.requires_grad = True
-        flag = False
-        
-    return flag
-
-def Class_Weighting(train_set, val_set, device, args):
+def Class_Weighting(train_set:torch.utils.data.Dataset, 
+                    val_set:torch.utils.data.Dataset, 
+                    device:str='cuda:0', 
+                    args=None):
     """ Class weighting for imbalanced datasets.
 
     Args:
@@ -239,22 +220,56 @@ def Class_Weighting(train_set, val_set, device, args):
     """
     train_dist = dict(Counter(train_set.targets))
     val_dist = dict(Counter(val_set.targets))
+            
+    if args.class_weights == 'median':
+        class_weights = torch.Tensor([(len(train_set)/x) for x in train_dist.values()]).to(device)
+    else:                   
+        class_weights = torch.Tensor(compute_class_weight(class_weight=args.class_weights, 
+                                                        classes=np.unique(train_set.targets), y=train_set.targets)).to(device)
+
+    print(f"Classes map: {train_set.class_to_idx}"); print(f"Train distribution: {train_dist}"); print(f"Val distribution: {val_dist}")
+    print(f"Class weights: {class_weights}\n")
     
-    train_dist = dict(sorted(train_dist.items(), key=lambda x: x[0]))
-    val_dist = dict(sorted(val_dist.items(), key=lambda x: x[0]))
-    
-    print(f"Classes map: {train_set.class_to_idx}")
-    print(f"Train distribution: {train_dist}")
-    print(f"Val distribution: {val_dist}")
-    
-    if args.class_weights:
-        if args.class_weights_type == 'Median':
-            class_weight = torch.Tensor([(len(train_set)/x) for x in train_dist.values()]).to(device)
-        elif args.class_weights_type == 'Manual':                   
-            class_weight= torch.Tensor(sklearn.utils.class_weight.compute_class_weight(class_weight='balanced', classes=np.unique(train_set.targets), y=train_set.targets)).to(device)
-    else: 
-        class_weight = None
-    
-    print(f"Class weights: {class_weight}\n")
-    
-    return class_weight
+    return class_weights
+
+def Classifier_Warmup(model: torch.nn.Module, 
+                      current_epoch: int, 
+                      warmup_epochs: int, 
+                      args=None):    
+    """Function that defines if we are in the warmup phase or not.
+
+    Args:
+        model (torch.nn.Module): _description_
+        current_epoch (int): _description_
+        warmup_epochs (int): _description_
+        flag (bool): _description_
+        args (_type_): _description_
+
+    Returns:
+        _type_: _description_
+    """
+    if current_epoch==0:
+        for param in model.parameters():
+            param.requires_grad = False
+            
+        if args.model in models.resnet_baselines:
+            for param in model.fc.parameters():
+                param.requires_grad = True
+        elif args.model in models.other_cnn_baselines:
+            for param in model.classifier.parameters():
+                param.requires_grad = True
+        elif args.model == 'vit_b_16':
+            for param in model.heads.head.parameters():
+                param.requires_grad = True
+        elif args.model in models.transformers_baselines:
+            for param in model.head.parameters():
+                param.requires_grad = True
+                
+        trainable_params={name: param for name, param in model.named_parameters() if param.requires_grad}
+        print(f"[Info] - Warmup phase: Only the head is trainable. Trainable parameters: {trainable_params.keys()}.")
+    elif current_epoch == warmup_epochs:
+        for param in model.parameters():
+            param.requires_grad = True    
+        trainable_params={name: param for name, param in model.named_parameters() if param.requires_grad}
+        print(f"[Info] - Finetune phase: All parameters are trainable.Trainable parameters: {trainable_params.keys()}.")
+        

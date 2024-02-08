@@ -1,14 +1,87 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
-import seaborn as sns
-import matplotlib.pyplot as plt
+import torchvision
+from timm.models import create_model
 
-cnns_baselines = ['resnet18.tv_in1k', 'resnet50.tv_in1k', 'vgg16.tv_in1k', 'densenet169.tv_in1k', 'efficientnet_b3']
+cnns_baselines = ['resnet18', 'resnet50', 'vgg16', 'densenet169', 'efficientnet_b3']
 transformers_baselines = ['deit_small_patch16_224', 'deit_base_patch16_224', 'vit_small_patch16_224.augreg_in1k', 'vit_b_16']
 deits_baselines = ['deit_small_patch16_224', 'deit_base_patch16_224']
 
+resnet_baselines = ['resnet18', 'resnet50']
+other_cnn_baselines = ['vgg16', 'densenet169', 'efficientnet_b3']
+
+def Define_Model(model, 
+                 nb_classes, 
+                 drop=0.0,
+                 args=None) -> torch.nn.Module:
+
+    if model == 'resnet18':
+        model = torchvision.models.resnet18(weights=torchvision.models.ResNet18_Weights.IMAGENET1K_V1)
+        model.fc = nn.Sequential(
+            nn.Dropout(p=drop),
+            nn.Linear(model.fc.in_features, nb_classes) 
+        )
+    elif model == 'resnet50':
+        model = torchvision.models.resnet50(weights=torchvision.models.ResNet50_Weights.IMAGENET1K_V1)
+        model.fc = nn.Sequential(
+            nn.Dropout(p=drop),
+            nn.Linear(model.fc.in_features, nb_classes) 
+        )
+    elif model == 'vgg16': 
+        model = torchvision.models.vgg16(weights=torchvision.models.VGG16_Weights.IMAGENET1K_V1)
+        model.classifier[-1] = nn.Sequential(
+            nn.Dropout(p=drop),
+            nn.Linear(model.classifier[-1].in_features, nb_classes) 
+        )
+    elif model == 'densenet169':
+        model = torchvision.models.densenet169(weights=torchvision.models.DenseNet169_Weights.IMAGENET1K_V1)
+        model.classifier = nn.Sequential(
+            nn.Dropout(p=drop),
+            nn.Linear(model.classifier.in_features, nb_classes) 
+        )
+    elif model == 'efficientnet_b3':
+        model = create_model(drop_rate=args.drop,  
+                             drop_path_rate=args.drop_layers_rate)
+        # model = torchvision.models.efficientnet_b3(weights=torchvision.models.EfficientNet_B3_Weights.IMAGENET1K_V1)
+        # model.classifier[-1] = nn.Linear(model.classifier[-1].in_features, nb_classes)
+    elif model == 'vit_b_16':
+        model = torchvision.models.vit_b_16(weights=torchvision.models.ViT_B_16_Weights.IMAGENET1K_V1)
+        model.heads.head = nn.Sequential(
+            nn.Dropout(p=drop),
+            nn.Linear(model.heads.head.in_features, nb_classes) 
+        )
+    elif model == 'vit_small_patch16_224.augreg_in1k':
+        model = create_model(
+            model,
+            pretrained=True,
+            num_classes=nb_classes,
+            drop_rate=drop,
+            pos_drop_rate=args.pos_drop_rate,
+            attn_drop_rate=args.attn_drop_rate,
+            drop_path_rate=args.drop_layer_rate,
+            drop_block_rate=None,
+            img_size=args.input_size,
+            pos_encoding = args.pos_encoding_flag,
+        )
+    elif model == 'deit_small_patch16_224' or model == 'deit_base_patch16_224':
+        model = create_model(
+            model,
+            pretrained=False,
+            num_classes=nb_classes,
+            drop_rate=drop,
+            pos_drop_rate=args.pos_drop_rate,
+            attn_drop_rate=args.attn_drop_rate,
+            drop_path_rate=args.drop_layer_rate,
+            img_size=args.input_size,
+            pos_encoding = args.pos_encoding_flag,
+        )
+
+    else:
+        raise NotImplementedError('This Baseline is not yet implemented!')
+    
+    return model
+    
 def Pretrained_Baseline_Paths(model, args) -> str: 
     """Selects the right checkpoint for the selected feature extractor model.
     

@@ -1,57 +1,14 @@
-import os
+import breast_scripts.data_setup as breast_data_setup
+import skin_scripts.data_setup as skin_data_setup
 
-import torchvision.transforms as transforms
-from torchvision import datasets, transforms
+datasets=['ISIC2019-Clean', 'PH2', 'Derm7pt', 'DDSM+CBIS+MIAS_CLAHE-Binary', 'DDSM+CBIS+MIAS_CLAHE', 'INbreast']
 
-from timm.data.constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
-from timm.data import create_transform
-
-def build_transform(is_train, args):
-    resize_im = args.input_size > 32
-    if is_train:
-        # this should always dispatch to transforms_imagenet_train
-        if args.nb_classes == 2:
-            transform = create_transform(
-                input_size=args.input_size,
-                is_training=True,
-                color_jitter=args.color_jitter,
-                auto_augment=args.aa,
-                interpolation=args.train_interpolation,
-                re_prob=args.reprob,
-                re_mode=args.remode,
-                re_count=args.recount,
-            )
-        else:
-            transform = create_transform(
-                input_size=args.input_size,
-                is_training=True,            
-            )
-                        
-        if not resize_im:
-            # replace RandomResizedCropAndInterpolation with
-            # RandomCrop
-            transform.transforms[0] = transforms.RandomCrop(
-                args.input_size, padding=4)
-            
-        return transform
-
-    t = []
-    if resize_im and args.input_size != 224:
-        size = int((256 / 224) * args.input_size)
-        t.append(
-            transforms.Resize(size, interpolation=3),  # to maintain same ratio w.r.t. 224 images
-        )
-        t.append(transforms.CenterCrop(args.input_size))
-
-    t.append(transforms.ToTensor())
-    t.append(transforms.Normalize(IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD))
-    return transforms.Compose(t)
-
-def build_dataset(is_train, args):
-        
-    transform = build_transform(is_train, args)
-    root = os.path.join(args.data_path, 'train' if is_train else 'val')
-    dataset = datasets.ImageFolder(root, transform=transform)
-    nb_classes = len(dataset.classes)
+def Build_Dataset(data_path, input_size, args):
     
-    return dataset, nb_classes
+    if args.dataset in datasets:
+        if args.dataset_type == 'Skin':
+            return skin_data_setup.Build_Dataset(True, data_path, args), skin_data_setup.Build_Dataset(False, data_path, args)
+        elif args.dataset_type == 'Breast':
+            return breast_data_setup.Build_Datasets(data_path, input_size, args)
+    else:
+        ValueError('Invalid dataset. Please choose from the following datasets: ISIC2019-Clean, PH2, Derm7pt, DDSM+CBIS+MIAS_CLAHE-Binary, DDSM+CBIS+MIAS_CLAHE, INbreast')
