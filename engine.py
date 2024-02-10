@@ -248,7 +248,7 @@ def Classifier_Warmup(model: torch.nn.Module,
     Returns:
         _type_: _description_
     """
-    if current_epoch==0:
+    if current_epoch==0 and warmup_epochs>0:
         for param in model.parameters():
             param.requires_grad = False
             
@@ -266,10 +266,12 @@ def Classifier_Warmup(model: torch.nn.Module,
                 param.requires_grad = True
                 
         trainable_params={name: param for name, param in model.named_parameters() if param.requires_grad}
-        print(f"[Info] - Warmup phase: Only the head is trainable. Trainable parameters: {trainable_params.keys()}.")
+        print(f"[Info] - Warmup phase: Only the head is trainable.")
+        #print(f"Trainable parameters: {trainable_params.keys()}.")
     elif current_epoch == warmup_epochs:
         for param in model.parameters():
             param.requires_grad = True    
         trainable_params={name: param for name, param in model.named_parameters() if param.requires_grad}
-        print(f"[Info] - Finetune phase: All parameters are trainable.Trainable parameters: {trainable_params.keys()}.")
+        print(f"[Info] - Finetune phase: All parameters are trainable.")
+        #print(f"Trainable parameters: {trainable_params.keys()}.")
         

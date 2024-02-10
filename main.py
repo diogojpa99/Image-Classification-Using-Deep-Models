@@ -35,9 +35,17 @@ def get_args_parser():
     parser.add_argument('--seed', default=42, type=int, help='random seed')
     parser.add_argument('--gpu', default='cuda:1', help='GPU id to use.')
 
+    parser.add_argument('--train', action='store_true', default=False, help='Training mode.')
+    parser.add_argument('--eval', action='store_true', default=False, help='Evaluation mode.')
+    parser.add_argument('--finetune', action='store_true', default=False, help='finetune mode.')
+    parser.add_argument('--infer', action='store_true', default=False, help='Inference mode.')
+    parser.add_argument('--debug', action='store_true', default=False, help='Debug mode.')
+
     # Dataset
     parser.add_argument('--dataset', default='ISIC2019-Clean', type=str, 
-                        choices=['ISIC2019-Clean', 'PH2', 'Derm7pt','DDSM+CBIS+MIAS_CLAHE-Binary', 'DDSM+CBIS+MIAS_CLAHE', 'INbreast'], metavar='DATASET')
+                        choices=['ISIC2019-Clean', 'PH2', 'Derm7pt','DDSM+CBIS+MIAS_CLAHE-Binary-Mass_vs_Normal', 
+                                 'DDSM+CBIS+MIAS_CLAHE-Binary-Benign_vs_Malignant', 'DDSM+CBIS+MIAS_CLAHE', 
+                                 'DDSM+CBIS+MIAS_CLAHE-v2', 'INbreast'], metavar='DATASET')
     parser.add_argument('--dataset_type', default='Skin', type=str, choices=['Breast', 'Skin'], metavar='DATASET')
     
     # Wanb parameters
@@ -45,7 +53,6 @@ def get_args_parser():
     parser.add_argument('--hardware', default='Server', choices=['Server', 'Colab', 'MyPC'], help='hardware used')
     parser.add_argument('--run_name', default='Baselines', help='name of the run')
     parser.add_argument('--wandb_flag', action='store_false', default=True, help='whether to use wandb')
-    parser.add_argument('--debug', action='store_true', default=False, help='Debug mode')
     
     # Data parameters
     parser.add_argument('--input_size', default=224, type=int, help='image size')
@@ -57,8 +64,7 @@ def get_args_parser():
     # Training parameters
     parser.add_argument('--epochs', default=100, type=int)
     parser.add_argument('--batch_size', default=256, type=int)
-    parser.add_argument('--training', action='store_true', default=True, help='training or testing')
-    parser.add_argument('--finetune', default=False, type=bool, help='finetune or not')
+
     parser.add_argument('--start_epoch', default=0, type=int, metavar='N', help='start epoch')
     parser.add_argument('--classifier_warmup_epochs', type=int, default=5, metavar='N')
                 
@@ -77,7 +83,6 @@ def get_args_parser():
     parser.add_argument('--baseline_pretrained_dataset', default='ImageNet1k', type=str, metavar='DATASET')
 
     # Evaluation parameters
-    parser.add_argument('--evaluate', action='store_true', default=False, help='evaluate model on validation set')
     parser.add_argument('--evaluate_model_name', default='Baseline.pth', type=str, help="")
     parser.add_argument('--resume', default='', type=str, metavar='PATH')
         
@@ -203,9 +208,9 @@ def get_args_parser():
 
 def main(args):
     
-    if args.evaluate or args.finetune:
-        args.training = False
-
+    if not args.train and not args.eval and not args.finetune and not args.infer:
+        raise ValueError('The mode is not specified. Please specify the mode: --train, --eval, --finetune, --infer.')
+    
     # Start a new wandb run to track this script
     if args.wandb_flag:
         wandb.init(
@@ -229,10 +234,10 @@ def main(args):
         )
         wandb.run.name = args.run_name
         
-    if args.debug:
-        wandb=print
+    # if args.debug:
+    #     wandb=print
     
-    if args.training: # Print arguments
+    if args.train or args.finetune: # Print arguments
         print("----------------- Args -------------------")
         for arg in vars(args):
             print(f"{arg}: {getattr(args, arg)}")
@@ -246,38 +251,38 @@ def main(args):
     
     ################## Data Setup ##################
     if args.data_path:
-    
-        train_set, val_set = data_setup.Build_Dataset(data_path = args.data_path, input_size=args.input_size, args=args)
         
-        ## Data Loaders 
-        sampler_train = torch.utils.data.RandomSampler(train_set)
-        sampler_val = torch.utils.data.SequentialSampler(val_set)
-        
-        data_loader_train = torch.utils.data.DataLoader(
-            train_set, sampler=sampler_train,
-            batch_size=args.batch_size,
-            num_workers=args.num_workers,
-            pin_memory=args.pin_mem,
-            drop_last=True,
-        )
-        data_loader_val = torch.utils.data.DataLoader(
-            val_set, sampler=sampler_val,
-            batch_size=int(1.5 * args.batch_size),
-            num_workers=args.num_workers,
-            pin_memory=args.pin_mem,
-            drop_last=False
-        )
+        if not args.infer:
+            train_set, val_set = data_setup.Build_Dataset(data_path = args.data_path, input_size=args.input_size, args=args)
+            
+            ## Data Loaders 
+            sampler_train = torch.utils.data.RandomSampler(train_set)
+            sampler_val = torch.utils.data.SequentialSampler(val_set)
+            
+            data_loader_train = torch.utils.data.DataLoader(
+                train_set, sampler=sampler_train,
+                batch_size=args.batch_size,
+                num_workers=args.num_workers,
+                pin_memory=args.pin_mem,
+                drop_last=True,
+            )
+            data_loader_val = torch.utils.data.DataLoader(
+                val_set, sampler=sampler_val,
+                batch_size=int(1.5 * args.batch_size),
+                num_workers=args.num_workers,
+                pin_memory=args.pin_mem,
+                drop_last=False
+            )
      
     ############################ Define the Feature Extractor ############################
     
     model = models.Define_Model(model=args.model, nb_classes=args.nb_classes, drop=args.drop, args=args)
-     
     model.to(device)
-    if args.model in models.deits_baselines:
+    
+    if args.finetune and args.model in models.deits_baselines:
         args.pretrained_baseline_path = models.Pretrained_Baseline_Paths(args.model, args)
-        if args.training:
-            if args.pretrained_baseline_path: # Load the pretrained feature extractor
-                utils.Load_Pretrained_Baseline(args.pretrained_baseline_path, model, args)
+        if args.pretrained_baseline_path:
+            utils.Load_Pretrained_Baseline(args.pretrained_baseline_path, model, args)
             
     ############################ Define the Model EMA ############################
     model_ema = None 
@@ -317,7 +322,7 @@ def main(args):
     if args.resume:
         utils.Load_Finetuned_Baseline(path=args.resume, model=model, args=args)
         
-        if args.evaluate:
+        if args.eval:
             print('******* Starting evaluation process. *******')
             total_time_str = 0
             best_results, deit_cls_vis = engine.evaluation(model=model,
@@ -329,13 +334,21 @@ def main(args):
             
             if args.visualize_cls_token and args.model in models.deits_baselines:
                 utils.Visualize_cls_token_dist(model, deit_cls_vis, args)
+                
+        elif args.infer:
+            print('Still to be implemented.')
+            # TODO: Add inference code
+            # Receive an input image
+            # Infer with the already finetuned model
+            # Return the prediction
+            # Note: Should define its own inference_loader, and so on
                                 
-    elif args.training or args.finetune:
+    elif args.train or args.finetune:
         
         start_time = time.time()  
         train_results = {'loss': [], 'acc': [] , 'lr': []}
         val_results = {'loss': [], 'acc': [], 'f1': [], 'cf_matrix': [], 'bacc': [], 'precision': [], 'recall': []}
-        best_val_bacc = 0.0
+        best_val_bacc = 0.0; best_results = None
         early_stopping = engine.EarlyStopping(patience=args.patience, verbose=True, delta=args.delta, path=str(output_dir) +'/checkpoint.pth')
         
         if not args.pos_encoding_flag and args.model in models.transformers_baselines:

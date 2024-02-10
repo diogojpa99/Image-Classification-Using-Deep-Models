@@ -1,7 +1,8 @@
 import breast_scripts.data_setup as breast_data_setup
 import skin_scripts.data_setup as skin_data_setup
 
-datasets=['ISIC2019-Clean', 'PH2', 'Derm7pt', 'DDSM+CBIS+MIAS_CLAHE-Binary', 'DDSM+CBIS+MIAS_CLAHE', 'INbreast']
+datasets=['ISIC2019-Clean', 'PH2', 'Derm7pt','DDSM+CBIS+MIAS_CLAHE-Binary-Mass_vs_Normal', 
+          'DDSM+CBIS+MIAS_CLAHE-Binary-Benign_vs_Malignant', 'DDSM+CBIS+MIAS_CLAHE', 'DDSM+CBIS+MIAS_CLAHE-v2', 'INbreast']
 
 def Build_Dataset(data_path, input_size, args):
     
@@ -11,4 +12,5 @@ def Build_Dataset(data_path, input_size, args):
         elif args.dataset_type == 'Breast':
             return breast_data_setup.Build_Datasets(data_path, input_size, args)
     else:
-        ValueError('Invalid dataset. Please choose from the following datasets: ISIC2019-Clean, PH2, Derm7pt, DDSM+CBIS+MIAS_CLAHE-Binary, DDSM+CBIS+MIAS_CLAHE, INbreast')
+        ValueError('Invalid dataset. Please choose from the following datasets: ISIC2019-Clean, PH2, Derm7pt, \
+            DDSM+CBIS+MIAS_CLAHE-Binary-Mass_vs_Normal, DDSM+CBIS+MIAS_CLAHE-Binary-Benign_vs_Malignant, DDSM+CBIS+MIAS_CLAHE, DDSM+CBIS+MIAS_CLAHE-v2, INbreast')
