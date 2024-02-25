@@ -37,7 +37,7 @@ def get_args_parser():
 
     parser.add_argument('--train', action='store_true', default=False, help='Training mode.')
     parser.add_argument('--eval', action='store_true', default=False, help='Evaluation mode.')
-    parser.add_argument('--finetune', action='store_true', default=False, help='finetune mode.')
+    parser.add_argument('--finetune', action='store_true', default=False, help='Finetune mode.')
     parser.add_argument('--infer', action='store_true', default=False, help='Inference mode.')
     parser.add_argument('--debug', action='store_true', default=False, help='Debug mode.')
 
@@ -45,7 +45,10 @@ def get_args_parser():
     parser.add_argument('--dataset', default='ISIC2019-Clean', type=str, 
                         choices=['ISIC2019-Clean', 'PH2', 'Derm7pt','DDSM+CBIS+MIAS_CLAHE-Binary-Mass_vs_Normal', 
                                  'DDSM+CBIS+MIAS_CLAHE-Binary-Benign_vs_Malignant', 'DDSM+CBIS+MIAS_CLAHE', 
-                                 'DDSM+CBIS+MIAS_CLAHE-v2', 'INbreast'], metavar='DATASET')
+                                 'DDSM+CBIS+MIAS_CLAHE-v2', 'INbreast', 
+                                 'MIAS_CLAHE', 'MIAS_CLAHE-Mass_vs_Normal', 'MIAS_CLAHE-Benign_vs_Malignant',
+                                 'DDSM', 'DDSM-Mass_vs_Normal', 'DDSM-Benign_vs_Malignant', 
+                                 'DDSM+CBIS-Mass_vs_Normal'], metavar='DATASET')
     parser.add_argument('--dataset_type', default='Skin', type=str, choices=['Breast', 'Skin'], metavar='DATASET')
     
     # Wanb parameters
@@ -66,7 +69,6 @@ def get_args_parser():
     parser.add_argument('--batch_size', default=256, type=int)
 
     parser.add_argument('--start_epoch', default=0, type=int, metavar='N', help='start epoch')
-    parser.add_argument('--classifier_warmup_epochs', type=int, default=5, metavar='N')
                 
     # Baselines parameters
     parser.add_argument('--model', default='resnet18', type=str, metavar='MODEL',
@@ -99,7 +101,7 @@ def get_args_parser():
     parser.add_argument('--opt-betas', default=None, type=float, nargs='+', metavar='BETA',
                         help='Optimizer Betas (default: None, use opt default)')
 
-    parser.add_argument('--clip-grad', type=float, default=None, metavar='NORM',
+    parser.add_argument('--clip_grad', type=float, default=None, metavar='NORM',
                         help='Clip gradient norm (default: None, no clipping)')
     
     parser.add_argument('--momentum', type=float, default=0.9, metavar='M',
@@ -193,8 +195,10 @@ def get_args_parser():
     parser.add_argument('--pos_encoding_flag', action='store_false', default=True, help='Whether to use positional encoding or not.')
     
     # Breast Data setup parameters
-    parser.add_argument('--loader', default='Gray_PIL_Loader_Wo_Her', type=str, metavar='LOADER', choices=['Gray_PIL_Loader', 'Gray_PIL_Loader_Wo_He'])
-    parser.add_argument('--test_val_flag', default=True, type=bool, help='If True, the test set is used as the validation set.')
+    parser.add_argument('--loader', default='Gray_PIL_Loader_Wo_He', type=str, metavar='LOADER', choices=['Gray_PIL_Loader', 'Gray_PIL_Loader_Wo_He'])
+    parser.add_argument('--test_val_flag', action='store_true', default=False, help='If True, the test set is used as the validation set.')
+    parser.add_argument('--train_val_split', default=0.8, type=float, help='Train-validation split')
+    parser.add_argument('--breast_strong_aug', action='store_true', default=False, help='Whether to use strong augmentation for the breast dataset')
     
     # Dropout parameters
     parser.add_argument('--drop', type=float, default=0.0, metavar='PCT', help='Dropout rate used in the classification head (default: 0.)')
@@ -202,6 +206,9 @@ def get_args_parser():
     parser.add_argument('--attn_drop_rate', type=float, default=0.0, metavar='PCT', help='Dropout rate for the attention layers (default: 0.)')
     parser.add_argument('--drop_layers_rate', type=float, default=0.0, metavar='PCT', help='Dropout rate for the layers (default: 0.)')
     parser.add_argument('--drop_block_rate', type=float, default=0.0, metavar='PCT', help='Dropout rate for the blocks (default: 0.)')
+    
+    # Classifiers Warmup parameters
+    parser.add_argument('--classifier_warmup_epochs', type=int, default=0, metavar='N', help='Epochs to warmup classifier') 
         
     return parser
 
@@ -361,7 +368,7 @@ def main(args):
         for epoch in range(args.start_epoch, (args.epochs + args.cooldown_epochs)):
             
             # Classifier Warmup
-            engine.Classifier_Warmup(model, epoch, args.warmup_epochs, args)
+            engine.Classifier_Warmup(model, epoch, args.classifier_warmup_epochs, args)
             
             train_stats = engine.train_step(model=model,
                                             dataloader=data_loader_train,

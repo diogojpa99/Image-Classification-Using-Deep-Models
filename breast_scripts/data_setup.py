@@ -9,6 +9,8 @@ from torchvision import transforms
 import torchvision.transforms as transforms
 from torchvision.datasets import ImageFolder
 
+from typing import List, Tuple
+
 def Gray_PIL_Loader_Wo_He(path: str) -> Image.Image:
     """This function opens the image using PIL and converts it to grayscale.
     Then resizes the grayscale image to a square shape (width equals height) using bilinear interpolation  
@@ -74,10 +76,12 @@ def Train_Transform(input_size:int=224,
     t.append(transforms.RandomCrop(input_size, padding=0)), 
     t.append(transforms.ToTensor())
     t.append(transforms.Lambda(Gray_to_RGB_Transform)) #t.append(transforms.Grayscale(num_output_channels=3))
-    t.append(transforms.RandomRotation(10))
-    t.append(transforms.RandomAffine(degrees=0, translate=(0.1, 0.1)))
-    t.append(transforms.ColorJitter(brightness=0.1, contrast=0.1))
+    #t.append(transforms.RandomRotation(10))
     
+    if args.breast_strong_aug:
+        t.append(transforms.RandomAffine(degrees=0, translate=(0.1, 0.1)))
+        t.append(transforms.ColorJitter(brightness=0.1, contrast=0.1))
+
     #t.append(transforms.RandomResizedCrop(input_size, scale=(0.8, 1.0)))
     #t.append(transforms.GaussianBlur(kernel_size=23, sigma=(0.1, 2.0)))
         
@@ -104,7 +108,7 @@ def Test_Transform(input_size:int=224,
   
 def Build_Datasets(data_path:str,
                    input_size:int=224, 
-                   args=None) -> (Dataset, Dataset):
+                   args=None) -> Tuple[Dataset, Dataset]:
     """This function returns the training, validation datasets.
     If there is no 'val' folder in the data path, then we need to split the training set into training and validation sets.
     In this case the training-validation split is an argument of the program and it is performs a 80-20 split (by default).

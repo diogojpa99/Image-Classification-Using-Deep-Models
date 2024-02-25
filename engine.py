@@ -52,8 +52,7 @@ def train_step(model: torch.nn.Module,
         
         if loss_scaler is not None:
             is_second_order = hasattr(optimizer, 'is_second_order') and optimizer.is_second_order # this attribute is added by timm on one optimizer (adahessian)
-            loss_scaler(loss, optimizer, clip_grad=max_norm,
-                        parameters=model.parameters(), create_graph=is_second_order)
+            loss_scaler(loss, optimizer, clip_grad=max_norm, parameters=model.parameters(), create_graph=is_second_order)
         else:
             loss.backward() 
             optimizer.step() 
