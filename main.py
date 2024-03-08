@@ -23,7 +23,7 @@ import wandb
 from typing import List, Union
 
 import os
-#os.environ["WANDB_MODE"] = "offline"
+os.environ["WANDB_MODE"] = "offline"
 
 def get_args_parser():
    
@@ -48,7 +48,8 @@ def get_args_parser():
                                  'DDSM+CBIS+MIAS_CLAHE-v2', 'INbreast', 
                                  'MIAS_CLAHE', 'MIAS_CLAHE-Mass_vs_Normal', 'MIAS_CLAHE-Benign_vs_Malignant',
                                  'DDSM', 'DDSM-Mass_vs_Normal', 'DDSM-Benign_vs_Malignant', 
-                                 'DDSM+CBIS-Mass_vs_Normal'], metavar='DATASET')
+                                 'DDSM+CBIS-Mass_vs_Normal',
+                                 'CBIS', 'CBIS-Processed_CLAHE'], metavar='DATASET')
     parser.add_argument('--dataset_type', default='Skin', type=str, choices=['Breast', 'Skin'], metavar='DATASET')
     
     # Wanb parameters
@@ -222,7 +223,7 @@ def main(args):
     if args.wandb_flag:
         wandb.init(
             project=args.project_name,
-            #mode="offline",
+            mode="offline",
             config={
             "Baseline model": args.model,
             "Baseline dataset": args.baseline_pretrained_dataset,
