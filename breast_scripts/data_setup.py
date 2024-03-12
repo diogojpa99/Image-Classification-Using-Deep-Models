@@ -1,15 +1,17 @@
 import os
 from PIL import Image
 import numpy as np
+import cv2
 
 import torch
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler, Dataset
 
 from torchvision import transforms
 import torchvision.transforms as transforms
+from torchvision.transforms import functional as TF
 from torchvision.datasets import ImageFolder
 
-from typing import List, Tuple
+from typing import Union
 
 def Gray_PIL_Loader_Wo_He(path: str) -> Image.Image:
     """This function opens the image using PIL and converts it to grayscale.
@@ -22,7 +24,20 @@ def Gray_PIL_Loader_Wo_He(path: str) -> Image.Image:
         Image.Image: loaded image.
     """
     image = Image.open(path)
-    return image.convert('L').resize((max(image.size),max(image.size)), resample=Image.BILINEAR)
+    return image.convert('L').resize((max(image.size),max(image.size)), resample=Image.BILINEAR) #return image.convert('L')
+
+def Gray_PIL_Loader_Wo_He_No_Resize(path: str) -> Image.Image:
+    """This function opens the image using PIL and converts it to grayscale.
+    Then resizes the grayscale image to a square shape (width equals height) using bilinear interpolation  
+
+    Args:
+        path (str): Path to the image.
+
+    Returns:
+        Image.Image: loaded image.
+    """
+    image = Image.open(path)
+    return image.convert('L')
 
 def Gray_PIL_Loader(path: str) -> Image.Image:
     with open(path, 'rb') as f:
@@ -50,6 +65,55 @@ def Gray_to_RGB_Transform(x: torch.Tensor) -> torch.Tensor:
     """
     return torch.cat([x, x, x], 0)
 
+def apply_clahe(x:Image.Image):
+    """Apply CLAHE to the input image.
+
+    Args:
+        image (PIL): The input image.
+
+    Returns:
+        _type_: _description_
+    """
+    clahe = cv2.createCLAHE(clipLimit=1.0, tileGridSize=(8, 8))
+    return Image.fromarray(clahe.apply(np.array(x)))
+
+def padding_image_one_side(x:torch.Tensor) -> torch.Tensor:
+    """
+    Pad the input image tensor to make it square.
+    We only want to pad the side with the least amount of information.
+        
+    Args:
+        image (torch.Tensor): The input image tensor with shape (C, H, W).
+        min_size (int): Minimum size for the image after padding.
+        padding_value (int): Value to use for padding. Default is 0 (black).
+    
+    Returns:
+        torch.Tensor: Padded image tensor with square shape.
+    """
+
+    min_size=224
+    padding_value=0
+    
+    c, h, w = x.size()
+    max_side = max(h, w, min_size)
+    padding_left = max_side - w
+    padding_right = max_side - w 
+    padding_top = (max_side - h) // 2
+    padding_bottom = max_side - h - padding_top
+    
+    # Compute the side that has the least amount of information
+    column_sums = x.sum(dim=[0, 1])
+    values, idx = torch.topk(column_sums, k=int(0.10 * column_sums.size(-1)), largest=False, sorted=True)
+    dist_left = torch.mean(idx.float()) # Average distance from the columns with the least amount of information to the left edge
+    dist_right = torch.mean((torch.ones(len(idx))*x.size(-1)) - idx.float()) # Average distance from the columns with the least amount of information to the right edge
+
+    if dist_left < dist_right:
+        padding = (padding_left, 0, 0, 0)
+    else:
+        padding = (0, 0, padding_right, 0)
+                
+    return TF.pad(x, padding, padding_value, 'constant')
+
 def Train_Transform(input_size:int=224,
                     args=None) -> transforms.Compose:
     """Builds the data transformation pipeline.
@@ -70,20 +134,27 @@ def Train_Transform(input_size:int=224,
     """
     t = []
     
+    if args.breast_clahe:
+        t.append(transforms.Lambda(apply_clahe))
+    t.append(transforms.ToTensor())
+    if args.breast_padding:
+        t.append(transforms.Lambda(padding_image_one_side))
+    t.append(transforms.Resize([input_size, input_size], antialias=args.breast_antialias))
+    t.append(transforms.Lambda(Gray_to_RGB_Transform)) #t.append(transforms.Grayscale(num_output_channels=3))
+
+    # Data augmentation
     t.append(transforms.RandomVerticalFlip())
     t.append(transforms.RandomHorizontalFlip())
-    t.append(transforms.Resize([input_size, input_size], antialias=True))
-    t.append(transforms.RandomCrop(input_size, padding=0)), 
-    t.append(transforms.ToTensor())
-    t.append(transforms.Lambda(Gray_to_RGB_Transform)) #t.append(transforms.Grayscale(num_output_channels=3))
-    #t.append(transforms.RandomRotation(10))
+    t.append(transforms.RandomRotation(10))
+    #t.append(transforms.RandomAffine(degrees=0, translate=(0.1, 0.1)))
     
     if args.breast_strong_aug:
-        t.append(transforms.RandomAffine(degrees=0, translate=(0.1, 0.1)))
+        t.append(transforms.RandomCrop(input_size, padding=0))
         t.append(transforms.ColorJitter(brightness=0.1, contrast=0.1))
-
-    #t.append(transforms.RandomResizedCrop(input_size, scale=(0.8, 1.0)))
-    #t.append(transforms.GaussianBlur(kernel_size=23, sigma=(0.1, 2.0)))
+        t.append(transforms.RandomAffine(degrees=0, translate=(0.0, 0.1)))
+        #t.append(transforms.RandomAffine(degrees=0, scale=(0.8, 1.2)))
+        #t.append(transforms.RandomResizedCrop(input_size, scale=(0.8, 1.0)))
+        #t.append(transforms.GaussianBlur(kernel_size=23, sigma=(0.1, 2.0)))
         
     return transforms.Compose(t)
 
@@ -100,15 +171,19 @@ def Test_Transform(input_size:int=224,
     """
     t = []
     
+    if args.breast_clahe: 
+        t.append(transforms.Lambda(apply_clahe))
     t.append(transforms.ToTensor())
-    t.append(transforms.Resize([input_size, input_size], antialias=True))
-    t.append(transforms.Lambda(Gray_to_RGB_Transform)) #t.append(transforms.Grayscale(num_output_channels=3)) 
-    
+    if args.breast_padding: 
+        t.append(transforms.Lambda(padding_image_one_side))
+    t.append(transforms.Resize([input_size, input_size], antialias=args.breast_antialias))
+    t.append(transforms.Lambda(Gray_to_RGB_Transform)) #t.append(transforms.Grayscale(num_output_channels=3))
+
     return transforms.Compose(t)
   
 def Build_Datasets(data_path:str,
                    input_size:int=224, 
-                   args=None) -> Tuple[Dataset, Dataset]:
+                   args=None) -> Union[Dataset, Dataset]:
     """This function returns the training, validation datasets.
     If there is no 'val' folder in the data path, then we need to split the training set into training and validation sets.
     In this case the training-validation split is an argument of the program and it is performs a 80-20 split (by default).
@@ -148,9 +223,12 @@ def Build_Datasets(data_path:str,
     val_transform = Test_Transform(input_size=input_size, args=args)
     
     # Build the datasets
-    if args.loader=='Gray_PIL_Loader_Wo_He':
+    if args.breast_loader=='Gray_PIL_Loader_Wo_He':
         train_set = ImageFolder(root=train_path, transform=train_transform, loader=Gray_PIL_Loader_Wo_He)
         val_set = ImageFolder(root=val_path, transform=val_transform, loader=Gray_PIL_Loader_Wo_He)
+    elif args.breast_loader=='Gray_PIL_Loader_Wo_He_No_Resize':
+        train_set = ImageFolder(root=train_path, transform=train_transform, loader=Gray_PIL_Loader_Wo_He_No_Resize)
+        val_set = ImageFolder(root=val_path, transform=val_transform, loader=Gray_PIL_Loader_Wo_He_No_Resize)
     else:
         train_set = ImageFolder(root=train_path, transform=train_transform, loader=Gray_PIL_Loader)
         val_set = ImageFolder(root=val_path, transform=val_transform, loader=Gray_PIL_Loader)
@@ -170,45 +248,41 @@ def Build_Datasets(data_path:str,
         
     return train_set, val_set
          
-def Get_TestLoader(data_path:str,
-                   input_size:int=224, 
-                   batch_size:int=64, 
-                   num_workers:int=0,
-                   args=None) -> DataLoader:
-    """This function returns the training, validation data loaders. 
-    In this case, there is no 'val' folder in the data path. Thus, we need to split the training set into training and validation sets.
-
+def Get_Testset(data_path:str,
+                input_size:int=224, 
+                args=None) -> DataLoader:
+    """This function returns the Test set. 
+    
     Args:
         dataset (torch.utils.data.Dataset): Dataset.
         input_size (int, optional): Input size for the model. Defaults to 224.
-        batch_size (int, optional): Batch size. Defaults to 64.
-        num_workers (int, optional): Number of workers. Defaults to 0.
         args (argparse.ArgumentParser, optional): Arguments. Defaults to None.
 
     Returns:
         DataLoader: Test data loader.
     """
     root = os.path.join(data_path)
-    test_loader = None
-    
+    test_path = None; test_set = None
+        
     if 'test' in os.listdir(root):
         test_path = os.path.join(root, 'test')
     elif 'test' not in os.listdir(root) and 'val' in os.listdir(root):
         test_path = os.path.join(root, 'val')
         print('No test folder found in the data path. Using the validation folder as the test folder.')
+    elif 'test' not in os.listdir(root) and 'val' not in os.listdir(root) and 'train' in os.listdir(root):
+        test_path = os.path.join(root, 'train')
+        print('No test folder (nor val folder) found in the data path. Using the training folder as the test folder.')
     else:
         ValueError('No test folder (nor val folder) found in the data path. Make sure the data path has a test folder.')
         
     test_transform = Test_Transform(input_size=input_size, args=args)
     
-    test_set = ImageFolder(root=test_path, transform=test_transform, loader=Gray_PIL_Loader_Wo_He)
-    
-    test_loader = DataLoader(test_set,
-                            batch_size=batch_size,
-                            shuffle=False,
-                            num_workers=num_workers,
-                            pin_memory=(torch.cuda.is_available()),
-                            drop_last=False)
-    
-    return test_loader
+    if args.breast_loader=='Gray_PIL_Loader_Wo_He':
+        test_set = ImageFolder(root=test_path, transform=test_transform, loader=Gray_PIL_Loader_Wo_He)
+    elif args.breast_loader=='Gray_PIL_Loader_Wo_He_No_Resize':
+        test_set = ImageFolder(root=test_path, transform=test_transform, loader=Gray_PIL_Loader_Wo_He_No_Resize)
+    else:
+        test_set = ImageFolder(root=test_path, transform=test_transform, loader=Gray_PIL_Loader)
+            
+    return test_set
                    

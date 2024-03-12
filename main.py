@@ -2,15 +2,12 @@ import Models.DEiT as deit, Models.ViT as vit
 
 import models, utils, data_setup, engine
 
-import torch.nn as nn
 import torch
 import torch.backends.cudnn as cudnn
-import torchvision
 
 from timm.optim import create_optimizer
 from timm.utils import get_state_dict, ModelEma, NativeScaler
 from timm.scheduler import create_scheduler
-from timm.models import create_model
 import torch.optim as optim
 
 import argparse
@@ -42,15 +39,15 @@ def get_args_parser():
     parser.add_argument('--infer', action='store_true', default=False, help='Inference mode.')
     parser.add_argument('--debug', action='store_true', default=False, help='Debug mode.')
 
-    # Dataset
     parser.add_argument('--dataset', default='ISIC2019-Clean', type=str, 
                         choices=['ISIC2019-Clean', 'PH2', 'Derm7pt','DDSM+CBIS+MIAS_CLAHE-Binary-Mass_vs_Normal', 
                                  'DDSM+CBIS+MIAS_CLAHE-Binary-Benign_vs_Malignant', 'DDSM+CBIS+MIAS_CLAHE', 
                                  'DDSM+CBIS+MIAS_CLAHE-v2', 'INbreast', 
                                  'MIAS_CLAHE', 'MIAS_CLAHE-Mass_vs_Normal', 'MIAS_CLAHE-Benign_vs_Malignant',
                                  'DDSM', 'DDSM-Mass_vs_Normal', 'DDSM-Benign_vs_Malignant', 
-                                 'DDSM+CBIS-Mass_vs_Normal',
-                                 'CBIS', 'CBIS-Processed_CLAHE'], metavar='DATASET')
+                                 'DDSM+CBIS-Mass_vs_Normal', 'DDSM+CBIS-Benign_vs_Malignant', 'DDSM+CBIS-Benign_vs_Malignant-Processed',
+                                 'CBIS', 'CBIS-Processed_CLAHE',
+                                 'CMMD-only_mass-processed_crop_CLAHE', 'CMMD-only_mass'], metavar='DATASET')
     parser.add_argument('--dataset_type', default='Skin', type=str, choices=['Breast', 'Skin'], metavar='DATASET')
     
     # Wanb parameters
@@ -78,11 +75,9 @@ def get_args_parser():
                                  'vit_b_16', 'deit_small_patch16_224', 'deit_base_patch16_224',], 
                         help='Feature Extractor model architecture (default: "resnet18")')
     
-    parser.add_argument('--pretrained_baseline_path', default='https://dl.fbaipublicfiles.com/deit/deit_small_patch16_224-cd65a155.pth', type=str, 
-                        choices=['https://dl.fbaipublicfiles.com/deit/deit_small_patch16_224-cd65a155.pth',
-                                 'https://dl.fbaipublicfiles.com/deit/deit_base_patch16_224-b5f2ef4d.pth',
-                                 'https://storage.googleapis.com/vit_models/augreg/S_16-i1k-300ep-lr_0.001-aug_medium2-wd_0.1-do_0.0-sd_0.0--imagenet2012-steps_20k-lr_0.01-res_224.npz',], 
-                        metavar='PATH', help="Download the pretrained feature extractor from the given path.")
+    parser.add_argument('--pretrained_baseline_path', default=None, type=str, 
+                        metavar='PATH', help="Path to the pretrained baseline model.")
+    parser.add_argument('--from_pretrained_baseline_flag', action='store_true', default=False, help='Whether to load the model from a pretrained baseline model.')  
     
     parser.add_argument('--baseline_pretrained_dataset', default='ImageNet1k', type=str, metavar='DATASET')
 
@@ -91,7 +86,7 @@ def get_args_parser():
     parser.add_argument('--resume', default='', type=str, metavar='PATH')
         
     # Imbalanced dataset parameters
-    parser.add_argument('--class_weights', default='None', choices=['None', 'balanced', 'median'], type=str, 
+    parser.add_argument('--class_weights', default=None, choices=[None, 'balanced', 'median'], type=str, 
                         help="Class weights for loss function.")
     
     # Optimizer parameters 
@@ -196,10 +191,14 @@ def get_args_parser():
     parser.add_argument('--pos_encoding_flag', action='store_false', default=True, help='Whether to use positional encoding or not.')
     
     # Breast Data setup parameters
-    parser.add_argument('--loader', default='Gray_PIL_Loader_Wo_He', type=str, metavar='LOADER', choices=['Gray_PIL_Loader', 'Gray_PIL_Loader_Wo_He'])
+    parser.add_argument('--breast_loader', default='Gray_PIL_Loader_Wo_He_No_Resize', type=str, metavar='LOADER', 
+                        choices=['Gray_PIL_Loader', 'Gray_PIL_Loader_Wo_He', 'Gray_PIL_Loader_Wo_He_No_Resize'])
     parser.add_argument('--test_val_flag', action='store_true', default=False, help='If True, the test set is used as the validation set.')
     parser.add_argument('--train_val_split', default=0.8, type=float, help='Train-validation split')
     parser.add_argument('--breast_strong_aug', action='store_true', default=False, help='Whether to use strong augmentation for the breast dataset')
+    parser.add_argument('--breast_clahe', action='store_true', default=False, help='Whether to use CLAHE for the breast dataset')
+    parser.add_argument('--breast_padding', action='store_true', default=False, help='Whether to use padding for the breast dataset') 
+    parser.add_argument('--breast_antialias', action='store_true', default=False, help='Whether to use antialias for the breast dataset')
     
     # Dropout parameters
     parser.add_argument('--drop', type=float, default=0.0, metavar='PCT', help='Dropout rate used in the classification head (default: 0.)')
@@ -242,8 +241,8 @@ def main(args):
         )
         wandb.run.name = args.run_name
         
-    # if args.debug:
-    #     wandb=print
+    if args.debug:
+        wandb=print
     
     if args.train or args.finetune: # Print arguments
         print("----------------- Args -------------------")
@@ -285,17 +284,25 @@ def main(args):
     ############################ Define the Feature Extractor ############################
     
     model = models.Define_Model(model=args.model, nb_classes=args.nb_classes, drop=args.drop, args=args)
-    model.to(device)
     
-    if args.finetune and args.model in models.deits_baselines:
+    if args.finetune and (args.model in models.deits_baselines) and not args.from_pretrained_baseline_flag:
         args.pretrained_baseline_path = models.Pretrained_Baseline_Paths(args.model, args)
         if args.pretrained_baseline_path:
             utils.Load_Pretrained_Baseline(args.pretrained_baseline_path, model, args)
+    elif args.finetune and args.from_pretrained_baseline_flag and (args.pretrained_baseline_path is not None):
+        print(f"[Info] Loading the pretrained MIL model from:\n'{args.pretrained_baseline_path}'")
+        utils.Load_Finetuned_Baseline(path=args.pretrained_baseline_path, model=model, args=args)
+    elif args.resume:
+        print(f"[Info] Loading the finetuned model from:\n'{args.resume}'")
+        utils.Load_Finetuned_Baseline(path=args.resume, model=model, args=args)
             
+    model.to(device)
+    
     ############################ Define the Model EMA ############################
     model_ema = None 
     if args.model_ema:
         model_ema = ModelEma(model,decay=args.model_ema_decay, device='cpu' if args.model_ema_force_cpu else '', resume='')
+        #model_ema.ema.to(device)
             
     ################## Define Training Parameters ##################
     
@@ -327,7 +334,6 @@ def main(args):
     ########################## Training or evaluating ###########################
     
     if args.resume:
-        utils.Load_Finetuned_Baseline(path=args.resume, model=model, args=args)
         
         if args.eval:
             print('******* Starting evaluation process. *******')
