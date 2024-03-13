@@ -167,3 +167,7 @@ Finetuned_Models/
 
 #Wandb
 wandb/
+
+pretrained_ckpts/
+
+zaux_code/

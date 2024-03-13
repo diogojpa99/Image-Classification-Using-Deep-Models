@@ -74,7 +74,7 @@ def apply_clahe(x:Image.Image):
     Returns:
         _type_: _description_
     """
-    clahe = cv2.createCLAHE(clipLimit=1.0, tileGridSize=(8, 8))
+    clahe = cv2.createCLAHE(clipLimit=0.02, tileGridSize=(8, 8))
     return Image.fromarray(clahe.apply(np.array(x)))
 
 def padding_image_one_side(x:torch.Tensor) -> torch.Tensor:

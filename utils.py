@@ -271,9 +271,9 @@ def Load_Finetuned_Baseline(path, model, args):
     # Load the pretrained Mil model
     if path.startswith('https'):
         checkpoint = torch.hub.load_state_dict_from_url(
-            args.resume, map_location='cpu', check_hash=True)
+            path, map_location='cpu', check_hash=True)
     else:
-        checkpoint = torch.load(args.resume, map_location='cpu')
+        checkpoint = torch.load(path, map_location='cpu')
                 
     checkpoint_keys = set(checkpoint['model'].keys()); model_keys = set(model.state_dict().keys())
     unmatched_keys = checkpoint_keys.symmetric_difference(model_keys)

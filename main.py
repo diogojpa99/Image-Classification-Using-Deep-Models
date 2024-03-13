@@ -16,12 +16,18 @@ import datetime
 import time
 import numpy as np
 import wandb
+import warnings
+from sklearn.exceptions import UndefinedMetricWarning   
 
 from typing import List, Union
 
 import os
 import gc
+
 os.environ["WANDB_MODE"] = "offline"
+
+warnings.filterwarnings("ignore", category=UndefinedMetricWarning)
+
 
 def get_args_parser():
    
@@ -46,8 +52,9 @@ def get_args_parser():
                                  'MIAS_CLAHE', 'MIAS_CLAHE-Mass_vs_Normal', 'MIAS_CLAHE-Benign_vs_Malignant',
                                  'DDSM', 'DDSM-Mass_vs_Normal', 'DDSM-Benign_vs_Malignant', 
                                  'DDSM+CBIS-Mass_vs_Normal', 'DDSM+CBIS-Benign_vs_Malignant', 'DDSM+CBIS-Benign_vs_Malignant-Processed',
-                                 'CBIS', 'CBIS-Processed_CLAHE',
-                                 'CMMD-only_mass-processed_crop_CLAHE', 'CMMD-only_mass'], metavar='DATASET')
+                                 'CBIS', 'CBIS-Processed_CLAHE', 'CBIS-DDSM-only_mass', 'CBIS-DDSM',
+                                 'CMMD-only_mass-processed_crop_CLAHE', 'CMMD-only_mass',
+                                 'CMMD-only_mass-processed'], metavar='DATASET')
     parser.add_argument('--dataset_type', default='Skin', type=str, choices=['Breast', 'Skin'], metavar='DATASET')
     
     # Wanb parameters
@@ -70,8 +77,8 @@ def get_args_parser():
     parser.add_argument('--start_epoch', default=0, type=int, metavar='N', help='start epoch')
                 
     # Baselines parameters
-    parser.add_argument('--model', default='resnet18', type=str, metavar='MODEL',
-                        choices=['resnet18', 'resnet50','vgg16', 'densenet169', 'efficientnet_b3', 'vit_small_patch16_224.augreg_in1k', 
+    parser.add_argument('--model', default=None, type=str, metavar='MODEL',
+                        choices=[None, 'resnet18', 'resnet50','vgg16', 'densenet169', 'efficientnet_b3', 'vit_small_patch16_224.augreg_in1k', 
                                  'vit_b_16', 'deit_small_patch16_224', 'deit_base_patch16_224',], 
                         help='Feature Extractor model architecture (default: "resnet18")')
     
@@ -283,16 +290,20 @@ def main(args):
      
     ############################ Define the Feature Extractor ############################
     
-    model = models.Define_Model(model=args.model, nb_classes=args.nb_classes, drop=args.drop, args=args)
+    if args.model is None:
+        #model = models.SimpleCNN(nb_classes=args.nb_classes, drop=args.drop)
+        model = models.ComplexCNN(nb_classes=args.nb_classes)
+    else:
+        model = models.Define_Model(model=args.model, nb_classes=args.nb_classes, drop=args.drop, args=args)
+        if args.finetune and (args.model in models.deits_baselines) and not args.from_pretrained_baseline_flag:
+            args.pretrained_baseline_path = models.Pretrained_Baseline_Paths(args.model, args)
+            if args.pretrained_baseline_path:
+                utils.Load_Pretrained_Baseline(args.pretrained_baseline_path, model, args)
+        elif args.finetune and args.from_pretrained_baseline_flag and (args.pretrained_baseline_path is not None):
+            print(f"[Info] Loading the pretrained model from:\n'{args.pretrained_baseline_path}'")
+            utils.Load_Finetuned_Baseline(path=args.pretrained_baseline_path, model=model, args=args)
     
-    if args.finetune and (args.model in models.deits_baselines) and not args.from_pretrained_baseline_flag:
-        args.pretrained_baseline_path = models.Pretrained_Baseline_Paths(args.model, args)
-        if args.pretrained_baseline_path:
-            utils.Load_Pretrained_Baseline(args.pretrained_baseline_path, model, args)
-    elif args.finetune and args.from_pretrained_baseline_flag and (args.pretrained_baseline_path is not None):
-        print(f"[Info] Loading the pretrained MIL model from:\n'{args.pretrained_baseline_path}'")
-        utils.Load_Finetuned_Baseline(path=args.pretrained_baseline_path, model=model, args=args)
-    elif args.resume:
+    if args.resume:
         print(f"[Info] Loading the finetuned model from:\n'{args.resume}'")
         utils.Load_Finetuned_Baseline(path=args.resume, model=model, args=args)
             

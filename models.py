@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 import torchvision
 from timm.models import create_model
@@ -31,43 +32,21 @@ def Define_Model(model:str,
     """
 
     if model == 'resnet18':
-        model = torchvision.models.resnet18(weights=torchvision.models.ResNet18_Weights.IMAGENET1K_V1) if args.finetune else torchvision.models.resnet18()
-        model.fc = nn.Sequential(
-            nn.Dropout(p=drop),
-            nn.Linear(model.fc.in_features, nb_classes) 
-        )
+        model = torchvision.models.resnet18(weights=torchvision.models.ResNet18_Weights.IMAGENET1K_V1, num_classes=nb_classes) if args.finetune else torchvision.models.resnet18(num_classes=nb_classes)
+        # model.fc = nn.Sequential(
+        #     nn.Dropout(p=drop),
+        #     nn.Linear(model.fc.in_features, nb_classes) 
+        # )
     elif model == 'resnet50':
-        model = torchvision.models.resnet50(weights=torchvision.models.ResNet50_Weights.IMAGENET1K_V1) if args.finetune else torchvision.models.resnet50()
-        model.fc = nn.Sequential(
-            nn.Dropout(p=drop),
-            nn.Linear(model.fc.in_features, nb_classes) 
-        )
+        model = torchvision.models.resnet50(weights=torchvision.models.ResNet50_Weights.IMAGENET1K_V1, num_classes=nb_classes) if args.finetune else torchvision.models.resnet50(num_classes=nb_classes)
     elif model == 'vgg16': 
-        model = torchvision.models.vgg16(weights=torchvision.models.VGG16_Weights.IMAGENET1K_V1) if args.finetune else torchvision.models.vgg16()
-        model.classifier[-1] = nn.Sequential(
-            nn.Dropout(p=drop),
-            nn.Linear(model.classifier[-1].in_features, nb_classes) 
-        )
+        model = torchvision.models.vgg16(weights=torchvision.models.VGG16_Weights.IMAGENET1K_V1, num_classes=nb_classes, dropout=drop) if args.finetune else torchvision.models.vgg16(num_classes=nb_classes, dropout=drop)
     elif model == 'densenet169':
-        model = torchvision.models.densenet169(weights=torchvision.models.DenseNet169_Weights.IMAGENET1K_V1) if args.finetune else torchvision.models.densenet169()
-        model.classifier = nn.Sequential(
-            nn.Dropout(p=drop),
-            nn.Linear(model.classifier.in_features, nb_classes) 
-        )
+        model = torchvision.models.densenet169(weights=torchvision.models.DenseNet169_Weights.IMAGENET1K_V1, drop_rate=drop, num_classes=nb_classes) if args.finetune else torchvision.models.densenet169(drop_rate=drop, num_classes=nb_classes)
     elif model == 'efficientnet_b3':
-        model = create_model('efficientnet_b3', 
-                             pretrained=True if args.finetune else False,
-                             num_classes=nb_classes,
-                             drop_rate=args.drop,  
-                             drop_path_rate=args.drop_layers_rate)
-        # model = torchvision.models.efficientnet_b3(weights=torchvision.models.EfficientNet_B3_Weights.IMAGENET1K_V1)
-        # model.classifier[-1] = nn.Linear(model.classifier[-1].in_features, nb_classes)
+        model = torchvision.models.efficientnet_b3(weights=torchvision.models.EfficientNet_B3_Weights.IMAGENET1K_V1, num_classes=nb_classes, dropout=drop) if args.finetune else torchvision.models.efficientnet_b3(num_classes=nb_classes, dropout=drop)
     elif model == 'vit_b_16':
-        model = torchvision.models.vit_b_16(weights=torchvision.models.ViT_B_16_Weights.IMAGENET1K_V1) if args.finetune else torchvision.models.vit_b_16()
-        model.heads.head = nn.Sequential(
-            nn.Dropout(p=drop),
-            nn.Linear(model.heads.head.in_features, nb_classes) 
-        )
+        model = torchvision.models.vit_b_16(weights=torchvision.models.ViT_B_16_Weights.IMAGENET1K_V1, num_classes=nb_classes, dropout=drop) if args.finetune else torchvision.models.vit_b_16(num_classes=nb_classes, dropout=drop)
     elif model == 'vit_small_patch16_224.augreg_in1k':
         model = create_model(
             model,
@@ -93,7 +72,6 @@ def Define_Model(model:str,
             img_size=args.input_size,
             pos_encoding = args.pos_encoding_flag,
         )
-
     else:
         raise NotImplementedError('This Baseline is not yet implemented!')
     
@@ -151,4 +129,127 @@ def cls_token_dist(model, cls_attn, predictions, args):
     pred_nv_idx = torch.where(predictions == 1)[0]
     nv_attn_cls = torch.gather(input=attn_of_cls, dim=0, index=pred_nv_idx.unsqueeze(-1).expand(-1,attn_of_cls.shape[1]))
     cls_attn['nv'].append(torch.mean(nv_attn_cls,dim=0))
-            
+    
+
+class SimpleCNN(nn.Module):
+    def __init__(self, 
+                 nb_classes:int=2, 
+                 input_size:int=224,
+                 drop:float=0.0):
+        
+        super(SimpleCNN, self).__init__()
+        self.conv1 = nn.Conv2d(1, 16, kernel_size=3, stride=1, padding=1)
+        self.bn1 = nn.BatchNorm2d(16)
+        self.conv2 = nn.Conv2d(16, 32, 3, padding=1)
+        self.bn2 = nn.BatchNorm2d(32)
+        self.conv3 = nn.Conv2d(32, 64, 3, padding=1)
+        self.bn3 = nn.BatchNorm2d(64)
+        self.conv4 = nn.Conv2d(64, 128, 3, padding=1)
+        self.bn4 = nn.BatchNorm2d(128)
+        self.conv5 = nn.Conv2d(128, 256, 3, padding=1)
+        self.bn5 = nn.BatchNorm2d(256)
+        self.pool = nn.MaxPool2d(kernel_size=2, stride=2, padding=0)
+        self.fc1 = nn.Linear(256 * 7 * 7, 1024)
+        self.dropout1 = nn.Dropout(p=drop)
+        self.fc2 = nn.Linear(1024, nb_classes) 
+
+    def forward(self, x):
+        x = self.pool(F.relu(self.bn1(self.conv1(x))))
+        x = self.pool(F.relu(self.bn2(self.conv2(x))))
+        x = self.pool(F.relu(self.bn3(self.conv3(x))))
+        x = self.pool(F.relu(self.bn4(self.conv4(x))))
+        x = self.pool(F.relu(self.bn5(self.conv5(x))))
+        x = x.view(-1, 256 * 7 * 7) 
+        x = self.dropout1(F.relu(self.fc1(x)))
+        x = self.fc2(x)  
+        return x
+    
+class ResidualBlock(nn.Module):
+    def __init__(self, in_channels, out_channels, stride=1, downsample=None):
+        super(ResidualBlock, self).__init__()
+        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1)
+        self.bn1 = nn.BatchNorm2d(out_channels)
+        self.relu = nn.ReLU(inplace=True)
+        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1)
+        self.bn2 = nn.BatchNorm2d(out_channels)
+        self.downsample = downsample
+
+    def forward(self, x):
+        identity = x
+
+        out = self.conv1(x)
+        out = self.bn1(out)
+        out = self.relu(out)
+
+        out = self.conv2(out)
+        out = self.bn2(out)
+
+        if self.downsample is not None:
+            identity = self.downsample(x)
+
+        out += identity
+        out = self.relu(out)
+        return out
+
+class ComplexCNN(nn.Module):
+    def __init__(self, nb_classes=2):
+        super(ComplexCNN, self).__init__()
+        
+        self.initial_conv = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
+        self.initial_bn = nn.BatchNorm2d(64)
+        self.relu = nn.ReLU(inplace=True)
+        self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
+
+        # Configurations for scalable architecture
+        blocks_per_layer = [2, 2, 2, 2]
+        channels_per_layer = [64, 128, 256, 512, 1024]
+        
+        self.layers = nn.ModuleList()
+        self.in_channels = 64
+        
+        # Creating scalable layers
+        for idx, num_blocks in enumerate(blocks_per_layer):
+            out_channels = channels_per_layer[idx]
+            stride = 1 if idx == 0 else 2
+            self.layers.append(self._make_layer(out_channels, num_blocks, stride))
+
+        # Reduction layers before classifier
+        self.reduction = nn.Sequential(
+            nn.Conv2d(512, 512, kernel_size=1, stride=1),
+            nn.BatchNorm2d(512),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(512, 256, kernel_size=1, stride=1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(inplace=True)
+        )
+
+        self.adaptive_pool = nn.AdaptiveAvgPool2d((1, 1))
+        self.fc = nn.Linear(256, nb_classes)
+
+    def _make_layer(self, out_channels, blocks, stride):
+        downsample = None
+        if stride != 1 or self.in_channels != out_channels:
+            downsample = nn.Sequential(
+                nn.Conv2d(self.in_channels, out_channels, kernel_size=1, stride=stride, bias=False),
+                nn.BatchNorm2d(out_channels),
+            )
+
+        layers = []
+        layers.append(ResidualBlock(self.in_channels, out_channels, stride, downsample))
+        self.in_channels = out_channels
+        for _ in range(1, blocks):
+            layers.append(ResidualBlock(out_channels, out_channels))
+
+        return nn.Sequential(*layers)
+
+    def forward(self, x):
+        x = self.maxpool(self.relu(self.initial_bn(self.initial_conv(x))))
+
+        for layer in self.layers:
+            x = layer(x)
+
+        x = self.reduction(x)
+        x = self.adaptive_pool(x)
+        x = torch.flatten(x, 1)
+        x = self.fc(x)
+        return x
