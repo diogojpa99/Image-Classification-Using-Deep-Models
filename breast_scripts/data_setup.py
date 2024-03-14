@@ -134,13 +134,15 @@ def Train_Transform(input_size:int=224,
     """
     t = []
     
-    if args.breast_clahe:
+    if args.breast_clahe: 
         t.append(transforms.Lambda(apply_clahe))
     t.append(transforms.ToTensor())
-    if args.breast_padding:
+    if args.breast_padding: 
         t.append(transforms.Lambda(padding_image_one_side))
-    t.append(transforms.Resize([input_size, input_size], antialias=args.breast_antialias))
-    t.append(transforms.Lambda(Gray_to_RGB_Transform)) #t.append(transforms.Grayscale(num_output_channels=3))
+    if input_size != 224:
+        t.append(transforms.Resize([224, 224], antialias=args.breast_antialias))
+    if args.breast_transform_rgb:           
+        t.append(transforms.Lambda(Gray_to_RGB_Transform)) #t.append(transforms.Grayscale(num_output_channels=3))
 
     # Data augmentation
     t.append(transforms.RandomVerticalFlip())
@@ -176,8 +178,10 @@ def Test_Transform(input_size:int=224,
     t.append(transforms.ToTensor())
     if args.breast_padding: 
         t.append(transforms.Lambda(padding_image_one_side))
-    t.append(transforms.Resize([input_size, input_size], antialias=args.breast_antialias))
-    t.append(transforms.Lambda(Gray_to_RGB_Transform)) #t.append(transforms.Grayscale(num_output_channels=3))
+    if input_size != 224:
+        t.append(transforms.Resize([224, 224], antialias=args.breast_antialias))
+    if args.breast_transform_rgb:
+        t.append(transforms.Lambda(Gray_to_RGB_Transform)) #t.append(transforms.Grayscale(num_output_channels=3))
 
     return transforms.Compose(t)
   

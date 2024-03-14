@@ -8,17 +8,31 @@ datasets=['ISIC2019-Clean', 'PH2', 'Derm7pt','DDSM+CBIS+MIAS_CLAHE-Binary-Mass_v
           'DDSM+CBIS-Mass_vs_Normal', 'DDSM+CBIS-Benign_vs_Malignant', 'DDSM+CBIS-Benign_vs_Malignant-Processed', 
           'CBIS', 'CBIS-Processed_CLAHE', 'CBIS-DDSM-only_mass', 'CBIS-DDSM',
           'CMMD-only_mass-processed_crop_CLAHE', 'CMMD-only_mass',
-          'CMMD-only_mass-processed']
+          'CMMD-only_mass-processed',
+          'CBIS-DDSM-train_val-pad_clahe']
 
 def Build_Dataset(data_path, input_size, args):
     
-    if args.dataset in datasets:
-        if args.dataset_type == 'Skin':
-            return skin_data_setup.Build_Dataset(True, data_path, args), skin_data_setup.Build_Dataset(False, data_path, args)
-        elif args.dataset_type == 'Breast':
-            if args.finetune or args.train:
-                return breast_data_setup.Build_Datasets(data_path, input_size, args)
-            else: 
-                return breast_data_setup.Get_Testset(data_path, input_size, args), breast_data_setup.Get_Testset(data_path, input_size, args) # We will use the test set as the validation set
+    if args.dataset_type == 'Skin':
+        return skin_data_setup.Build_Dataset(True, data_path, args), skin_data_setup.Build_Dataset(False, data_path, args)
+    elif args.dataset_type == 'Breast':
+        if args.finetune or args.train:
+            return breast_data_setup.Build_Datasets(data_path, input_size, args)
+        else: 
+            return breast_data_setup.Get_Testset(data_path, input_size, args), breast_data_setup.Get_Testset(data_path, input_size, args) # We will use the test set as the validation set
     else:
-        ValueError('Invalid dataset. Please choose from the following datasets: {}'.format(datasets))
+        ValueError('Invalid dataset type. Please choose from the following dataset types: {}'.format(['Skin', 'Breast']))
+
+
+# def Build_Dataset(data_path, input_size, args):
+    
+#     if args.dataset in datasets:
+#         if args.dataset_type == 'Skin':
+#             return skin_data_setup.Build_Dataset(True, data_path, args), skin_data_setup.Build_Dataset(False, data_path, args)
+#         elif args.dataset_type == 'Breast':
+#             if args.finetune or args.train:
+#                 return breast_data_setup.Build_Datasets(data_path, input_size, args)
+#             else: 
+#                 return breast_data_setup.Get_Testset(data_path, input_size, args), breast_data_setup.Get_Testset(data_path, input_size, args) # We will use the test set as the validation set
+#     else:
+#         ValueError('Invalid dataset. Please choose from the following datasets: {}'.format(datasets))

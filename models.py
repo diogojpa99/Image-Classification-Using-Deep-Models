@@ -32,21 +32,23 @@ def Define_Model(model:str,
     """
 
     if model == 'resnet18':
-        model = torchvision.models.resnet18(weights=torchvision.models.ResNet18_Weights.IMAGENET1K_V1, num_classes=nb_classes) if args.finetune else torchvision.models.resnet18(num_classes=nb_classes)
-        # model.fc = nn.Sequential(
-        #     nn.Dropout(p=drop),
-        #     nn.Linear(model.fc.in_features, nb_classes) 
-        # )
+        model = torchvision.models.resnet18(weights=torchvision.models.ResNet18_Weights.IMAGENET1K_V1) if args.finetune else torchvision.models.resnet18()
+        model.fc = nn.Linear(model.fc.in_features, nb_classes) 
     elif model == 'resnet50':
-        model = torchvision.models.resnet50(weights=torchvision.models.ResNet50_Weights.IMAGENET1K_V1, num_classes=nb_classes) if args.finetune else torchvision.models.resnet50(num_classes=nb_classes)
+        model = torchvision.models.resnet50(weights=torchvision.models.ResNet50_Weights.IMAGENET1K_V1) if args.finetune else torchvision.models.resnet50()
+        model.fc = nn.Linear(model.fc.in_features, nb_classes) 
     elif model == 'vgg16': 
-        model = torchvision.models.vgg16(weights=torchvision.models.VGG16_Weights.IMAGENET1K_V1, num_classes=nb_classes, dropout=drop) if args.finetune else torchvision.models.vgg16(num_classes=nb_classes, dropout=drop)
+        model = torchvision.models.vgg16(weights=torchvision.models.VGG16_Weights.IMAGENET1K_V1, dropout=drop) if args.finetune else torchvision.models.vgg16(dropout=drop)
+        model.classifier[-1] = nn.Linear(model.classifier[-1].in_features, nb_classes)
     elif model == 'densenet169':
-        model = torchvision.models.densenet169(weights=torchvision.models.DenseNet169_Weights.IMAGENET1K_V1, drop_rate=drop, num_classes=nb_classes) if args.finetune else torchvision.models.densenet169(drop_rate=drop, num_classes=nb_classes)
+        model = torchvision.models.densenet169(weights=torchvision.models.DenseNet169_Weights.IMAGENET1K_V1, drop_rate=drop) if args.finetune else torchvision.models.densenet169(drop_rate=drop)
+        model.classifier = nn.Linear(model.classifier.in_features, nb_classes)
     elif model == 'efficientnet_b3':
-        model = torchvision.models.efficientnet_b3(weights=torchvision.models.EfficientNet_B3_Weights.IMAGENET1K_V1, num_classes=nb_classes, dropout=drop) if args.finetune else torchvision.models.efficientnet_b3(num_classes=nb_classes, dropout=drop)
+        model = torchvision.models.efficientnet_b3(weights=torchvision.models.EfficientNet_B3_Weights.IMAGENET1K_V1, dropout=drop) if args.finetune else torchvision.models.efficientnet_b3(dropout=drop)
+        model.classifier[-1] = nn.Linear(model.classifier[-1].in_features, nb_classes)
     elif model == 'vit_b_16':
-        model = torchvision.models.vit_b_16(weights=torchvision.models.ViT_B_16_Weights.IMAGENET1K_V1, num_classes=nb_classes, dropout=drop) if args.finetune else torchvision.models.vit_b_16(num_classes=nb_classes, dropout=drop)
+        model = torchvision.models.vit_b_16(weights=torchvision.models.ViT_B_16_Weights.IMAGENET1K_V1, dropout=drop) if args.finetune else torchvision.models.vit_b_16(dropout=drop)
+        model.heads.head = nn.Linear(model.heads.head.in_features, nb_classes)
     elif model == 'vit_small_patch16_224.augreg_in1k':
         model = create_model(
             model,
@@ -129,7 +131,26 @@ def cls_token_dist(model, cls_attn, predictions, args):
     pred_nv_idx = torch.where(predictions == 1)[0]
     nv_attn_cls = torch.gather(input=attn_of_cls, dim=0, index=pred_nv_idx.unsqueeze(-1).expand(-1,attn_of_cls.shape[1]))
     cls_attn['nv'].append(torch.mean(nv_attn_cls,dim=0))
-    
+
+class SimplifiedCNN(nn.Module):
+    def __init__(self, nb_classes=2, input_size=224, drop=0.5):
+        super(SimplifiedCNN, self).__init__()
+        self.conv1 = nn.Conv2d(1, 16, kernel_size=3, stride=1, padding=1)
+        self.bn1 = nn.BatchNorm2d(16)
+        self.conv2 = nn.Conv2d(16, 32, 3, padding=1)
+        self.bn2 = nn.BatchNorm2d(32)
+        self.pool = nn.MaxPool2d(kernel_size=2, stride=2, padding=0)
+        self.fc1 = nn.Linear(32 * 56 * 56, 512) # Adjusted based on the output size after pooling
+        self.dropout1 = nn.Dropout(p=drop)
+        self.fc2 = nn.Linear(512, nb_classes)
+        
+    def forward(self, x):
+        x = self.pool(F.relu(self.bn1(self.conv1(x))))
+        x = self.pool(F.relu(self.bn2(self.conv2(x))))
+        x = x.view(-1, 32 * 56 * 56) # Adjust the flattening based on the model architecture
+        x = self.dropout1(F.relu(self.fc1(x)))
+        x = self.fc2(x)
+        return x
 
 class SimpleCNN(nn.Module):
     def __init__(self, 
