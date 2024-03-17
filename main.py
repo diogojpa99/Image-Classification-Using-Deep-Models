@@ -195,9 +195,11 @@ def get_args_parser():
     parser.add_argument('--train_val_split', default=0.8, type=float, help='Train-validation split')
     parser.add_argument('--breast_strong_aug', action='store_true', default=False, help='Whether to use strong augmentation for the breast dataset')
     parser.add_argument('--breast_clahe', action='store_true', default=False, help='Whether to use CLAHE for the breast dataset')
+    parser.add_argument('--clahe_clip_limit', type=float, default=0.01, metavar='PCT', help='CLAHE clip limit (default: 0.01)')
     parser.add_argument('--breast_padding', action='store_true', default=False, help='Whether to use padding for the breast dataset') 
     parser.add_argument('--breast_antialias', action='store_true', default=False, help='Whether to use antialias for the breast dataset')
     parser.add_argument('--breast_transform_rgb', action='store_true', default=False, help='Whether to transform the breast dataset to RGB')
+    parser.add_argument('--breast_transform_left', action='store_true', default=False, help='Whether to transform the breast dataset to left')
     
     # Dropout parameters
     parser.add_argument('--drop', type=float, default=0.0, metavar='PCT', help='Dropout rate used in the classification head (default: 0.)')
@@ -263,7 +265,6 @@ def main(args):
     if args.kfold:
         print(f"[Info] K-Fold Cross Validation with {args.kfold_splits} splits.")
         k_fold.cross_validation(args.data_path, args.kfold_splits, args.seed, device, wandb, args)
-        
     else:
         ################## Data Setup ##################
         if args.data_path:
@@ -293,8 +294,9 @@ def main(args):
         ############################ Define the Feature Extractor ############################
         
         if args.model is None:
+            model = models.SimplifiedCNN(nb_classes=args.nb_classes, drop=args.drop)
             #model = models.SimpleCNN(nb_classes=args.nb_classes, drop=args.drop)
-            model = models.ComplexCNN(nb_classes=args.nb_classes)
+            #model = models.ComplexCNN(nb_classes=args.nb_classes)
         else:
             model = models.Define_Model(model=args.model, nb_classes=args.nb_classes, drop=args.drop, args=args)
             if args.finetune and (args.model in models.deits_baselines) and not args.from_pretrained_baseline_flag:

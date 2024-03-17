@@ -171,3 +171,9 @@ wandb/
 pretrained_ckpts/
 
 zaux_code/
+
+debug_breast/
+
+dev.ipynb_checkpoints/
+dev.ipynb
+

@@ -16,6 +16,7 @@ def Build_Dataset(data_path, input_size, args):
     if args.dataset_type == 'Skin':
         return skin_data_setup.Build_Dataset(True, data_path, args), skin_data_setup.Build_Dataset(False, data_path, args)
     elif args.dataset_type == 'Breast':
+        setup_clahe(args.dataset, args)
         if args.finetune or args.train:
             return breast_data_setup.Build_Datasets(data_path, input_size, args)
         else: 
@@ -36,3 +37,16 @@ def Build_Dataset(data_path, input_size, args):
 #                 return breast_data_setup.Get_Testset(data_path, input_size, args), breast_data_setup.Get_Testset(data_path, input_size, args) # We will use the test set as the validation set
 #     else:
 #         ValueError('Invalid dataset. Please choose from the following datasets: {}'.format(datasets))
+
+def setup_clahe(dataset, args):
+    """Sets up the CLAHE parameters for the dataset
+
+    Args:
+        dataset (_type_): _description_
+        args (_type_): _description_
+    """
+    if 'CMMD' in dataset:
+        args.clahe_clip_limit = 5.0
+        
+    print('CLAHE clip limit: {}'.format(args.clahe_clip_limit))
+        

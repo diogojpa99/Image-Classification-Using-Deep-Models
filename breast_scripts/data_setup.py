@@ -8,10 +8,18 @@ from torch.utils.data import DataLoader, RandomSampler, SequentialSampler, Datas
 
 from torchvision import transforms
 import torchvision.transforms as transforms
-from torchvision.transforms import functional as TF
+from torchvision.transforms import functional as F
 from torchvision.datasets import ImageFolder
 
 from typing import Union
+
+global std, mean
+
+DDSM_CBIS_Padd_mean = 0.2806
+DDSM_CBIS_Padd_std = 0.2567
+
+mean = DDSM_CBIS_Padd_mean
+std = DDSM_CBIS_Padd_std
 
 def Gray_PIL_Loader_Wo_He(path: str) -> Image.Image:
     """This function opens the image using PIL and converts it to grayscale.
@@ -24,7 +32,7 @@ def Gray_PIL_Loader_Wo_He(path: str) -> Image.Image:
         Image.Image: loaded image.
     """
     image = Image.open(path)
-    return image.convert('L').resize((max(image.size),max(image.size)), resample=Image.BILINEAR) #return image.convert('L')
+    return image.convert('L').resize((max(image.size),max(image.size)), resample=Image.BILINEAR)
 
 def Gray_PIL_Loader_Wo_He_No_Resize(path: str) -> Image.Image:
     """This function opens the image using PIL and converts it to grayscale.
@@ -36,8 +44,7 @@ def Gray_PIL_Loader_Wo_He_No_Resize(path: str) -> Image.Image:
     Returns:
         Image.Image: loaded image.
     """
-    image = Image.open(path)
-    return image.convert('L')
+    return Image.open(path).convert('L')
 
 def Gray_PIL_Loader(path: str) -> Image.Image:
     with open(path, 'rb') as f:
@@ -65,7 +72,15 @@ def Gray_to_RGB_Transform(x: torch.Tensor) -> torch.Tensor:
     """
     return torch.cat([x, x, x], 0)
 
-def apply_clahe(x:Image.Image):
+class CLAHE_Transform:
+    def __init__(self, clip_limit):
+        self.clip_limit = clip_limit
+        
+    def __call__(self, img):
+        clahe = cv2.createCLAHE(clipLimit=self.clip_limit, tileGridSize=(8, 8))
+        return Image.fromarray((clahe.apply(np.array(img)).astype(np.float32) / 255.0)) 
+
+def apply_clahe(x:Image.Image) -> Image.Image:
     """Apply CLAHE to the input image.
 
     Args:
@@ -112,10 +127,63 @@ def padding_image_one_side(x:torch.Tensor) -> torch.Tensor:
     else:
         padding = (0, 0, padding_right, 0)
                 
-    return TF.pad(x, padding, padding_value, 'constant')
+    return F.pad(x, padding, padding_value, 'constant')
 
-def Train_Transform(input_size:int=224,
-                    args=None) -> transforms.Compose:
+def transform_images_to_left(x:torch.Tensor) -> torch.Tensor:
+    """Transforms the input image tensor to the left.
+
+    Args:
+        x (torch.Tensor): The input image tensor.
+
+    Returns:
+    """
+    # Compute the side that has the least amount of information
+    column_sums = x.sum(dim=[0, 1])
+    values, idx = torch.topk(column_sums, k=int(0.10 * column_sums.size(-1)), largest=False, sorted=True)
+    dist_left = torch.mean(idx.float()) # Average distance from the columns with the least amount of information to the left edge
+    dist_right = torch.mean((torch.ones(len(idx))*x.size(-1)) - idx.float()) # Average distance from the columns with the least amount of information to the right edge
+
+    # If the breast is on the right side then perform an horizontal flip
+    if dist_left < dist_right:
+        x = F.hflip(x)
+                
+    return x
+
+def General_Img_Transform(t:list, input_size:int=224, args=None) -> transforms.Compose:
+    """_summary_
+
+    Args:
+        t (list): _description_
+        input_size (int, optional): _description_. Defaults to 224.
+        args (_type_, optional): _description_. Defaults to None.
+
+    Returns:
+        transforms.Compose: _description_
+    """
+    if args.breast_clahe: 
+        clahe_transform = CLAHE_Transform(clip_limit=args.clahe_clip_limit)
+        #t.append(transforms.Lambda(apply_clahe))
+        t.append(clahe_transform)
+        
+    t.append(transforms.ToTensor())
+    
+    if args.breast_padding: 
+        t.append(transforms.Lambda(padding_image_one_side))
+        
+    t.append(transforms.Normalize(mean=[mean], std=[std]))
+    
+    if input_size != 224:
+        t.append(transforms.Resize([224, 224], antialias=args.breast_antialias))
+        
+    if args.breast_transform_left:
+        t.append(transforms.Lambda(transform_images_to_left))
+        
+    if args.breast_transform_rgb:           
+        t.append(transforms.Lambda(Gray_to_RGB_Transform)) #t.append(transforms.Grayscale(num_output_channels=3))
+        
+    return t
+
+def Train_Transform(input_size:int=224, args=None) -> transforms.Compose:
     """Builds the data transformation pipeline.
     Since the dataset is grayscale, we need to convert it to RGB.
     The grayscale images are converted to RGB by concatenating the grayscale image to itself 3 times.
@@ -134,26 +202,18 @@ def Train_Transform(input_size:int=224,
     """
     t = []
     
-    if args.breast_clahe: 
-        t.append(transforms.Lambda(apply_clahe))
-    t.append(transforms.ToTensor())
-    if args.breast_padding: 
-        t.append(transforms.Lambda(padding_image_one_side))
-    if input_size != 224:
-        t.append(transforms.Resize([224, 224], antialias=args.breast_antialias))
-    if args.breast_transform_rgb:           
-        t.append(transforms.Lambda(Gray_to_RGB_Transform)) #t.append(transforms.Grayscale(num_output_channels=3))
-
+    t = General_Img_Transform(t, input_size, args)
+        
     # Data augmentation
-    t.append(transforms.RandomVerticalFlip())
-    t.append(transforms.RandomHorizontalFlip())
-    t.append(transforms.RandomRotation(10))
-    #t.append(transforms.RandomAffine(degrees=0, translate=(0.1, 0.1)))
-    
     if args.breast_strong_aug:
-        t.append(transforms.RandomCrop(input_size, padding=0))
-        t.append(transforms.ColorJitter(brightness=0.1, contrast=0.1))
-        t.append(transforms.RandomAffine(degrees=0, translate=(0.0, 0.1)))
+        if not args.breast_transform_left:
+            t.append(transforms.RandomHorizontalFlip())
+        t.append(transforms.RandomVerticalFlip())
+        t.append(transforms.RandomRotation(7))
+        #t.append(transforms.RandomAffine(degrees=0, translate=(0.1, 0.1)))
+        #t.append(transforms.RandomCrop(input_size, padding=0))
+        #t.append(transforms.ColorJitter(brightness=0.1, contrast=0.1))
+        #t.append(transforms.RandomAffine(degrees=0, translate=(0.0, 0.1)))
         #t.append(transforms.RandomAffine(degrees=0, scale=(0.8, 1.2)))
         #t.append(transforms.RandomResizedCrop(input_size, scale=(0.8, 1.0)))
         #t.append(transforms.GaussianBlur(kernel_size=23, sigma=(0.1, 2.0)))
@@ -172,17 +232,7 @@ def Test_Transform(input_size:int=224,
         transforms.Compose: Transformation pipeline for the test/validation set.
     """
     t = []
-    
-    if args.breast_clahe: 
-        t.append(transforms.Lambda(apply_clahe))
-    t.append(transforms.ToTensor())
-    if args.breast_padding: 
-        t.append(transforms.Lambda(padding_image_one_side))
-    if input_size != 224:
-        t.append(transforms.Resize([224, 224], antialias=args.breast_antialias))
-    if args.breast_transform_rgb:
-        t.append(transforms.Lambda(Gray_to_RGB_Transform)) #t.append(transforms.Grayscale(num_output_channels=3))
-
+    t = General_Img_Transform(t, input_size, args)
     return transforms.Compose(t)
   
 def Build_Datasets(data_path:str,
