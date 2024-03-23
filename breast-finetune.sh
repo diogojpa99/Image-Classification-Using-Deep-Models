@@ -19,7 +19,7 @@ loader="Gray_PIL_Loader_Wo_He_No_Resize"
 
 ############################################################## DDSM - Mass vs. Normal ####################################################################
 
-datapath="../../data/zDiogo_Araujo/DDSM/"
+datapath="../../data/zDiogo_Araujo/DDSM/DDSM_CLAHE-mass_normal"
 dataset_name="DDSM_CLAHE-mass_normal"
 classification_problem="mass_normal"
 dataset_type="Breast"
@@ -74,7 +74,7 @@ done
 ############################################################## DDSM+CBIS - Mass vs. Normal ####################################################################
 
 
-datapath="../../data/zDiogo_Araujo/DDSM+CBIS/"
+datapath="../../data/zDiogo_Araujo/DDSM+CBIS/DDSM+CBIS_CLAHE-mass_normal"
 dataset_name="DDSM+CBIS_CLAHE-mass_normal"
 classification_problem="mass_normal"
 dataset_type="Breast"
@@ -128,7 +128,7 @@ done
 
 ############################################################## DDSM - Benign vs. Malignant ####################################################################
 
-datapath="../../data/zDiogo_Araujo/DDSM/"
+datapath="../../data/zDiogo_Araujo/DDSM/DDSM_CLAHE-benign_malignant"
 dataset_name="DDSM_CLAHE-benign_malignant"
 classification_problem="benign_malignant"
 dataset_type="Breast"
@@ -181,7 +181,7 @@ do
 done
 
 ############################################################## DDSM+CBIS - Benign vs. Malignant ####################################################################
-datapath="../../data/zDiogo_Araujo/DDSM+CBIS/"
+datapath="../../data/zDiogo_Araujo/DDSM+CBIS/DDSM+CBIS_CLAHE-benign_malignant"
 dataset_name="DDSM+CBIS_CLAHE-benign_malignant"
 classification_problem="benign_malignant"
 dataset_type="Breast"
@@ -234,7 +234,7 @@ do
 done
 
 ############################################################## DDSM+CBIS+MIAS_CLAHE - Benign vs. Malignant ####################################################################
-datapath="../../data/zDiogo_Araujo/"
+datapath="../../data/zDiogo_Araujo/DDSM+CBIS+MIAS_CLAHE-benign_malignant"
 dataset_name="DDSM+CBIS+MIAS_CLAHE-benign_malignant"
 classification_problem="benign_malignant"
 dataset_type="Breast"
