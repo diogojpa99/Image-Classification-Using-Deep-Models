@@ -24,7 +24,7 @@ from typing import List, Union
 import os
 import gc
 
-os.environ["WANDB_MODE"] = "offline"
+#os.environ["WANDB_MODE"] = "offline"
 
 warnings.filterwarnings("ignore", category=UndefinedMetricWarning)
 
@@ -45,7 +45,8 @@ def get_args_parser():
     parser.add_argument('--infer', action='store_true', default=False, help='Inference mode.')
     parser.add_argument('--debug', action='store_true', default=False, help='Debug mode.')
 
-    parser.add_argument('--dataset', default='ISIC2019-Clean', type=str, metavar='DATASET')
+    parser.add_argument('--dataset', default='ISIC2019-Clean', type=str, metavar='DATASET', help='Training dataset name')
+    parser.add_argument('--testset', default=None, type=str, metavar='DATASET', help='Test dataset name')
     parser.add_argument('--dataset_type', default='Skin', type=str, choices=['Breast', 'Skin'], metavar='DATASET')
     
     # Wanb parameters
@@ -228,11 +229,11 @@ def main(args):
     if args.wandb_flag:
         wandb.init(
             project=args.project_name,
-            mode="offline",
+            #mode="offline",
             config={
             "Baseline model": args.model,
             "Baseline dataset": args.baseline_pretrained_dataset,
-            "Dataset": args.dataset,
+            "Train_set": args.dataset, "Test_set": args.testset,  
             "epochs": args.epochs,"batch_size": args.batch_size,
             "warmup_epochs": args.warmup_epochs, "Warmup lr": args.warmup_lr,
             "cooldown_epochs": args.cooldown_epochs, "patience_epochs": args.patience_epochs,
@@ -247,8 +248,8 @@ def main(args):
         )
         wandb.run.name = args.run_name
         
-    if args.debug:
-        wandb=print
+    # if args.debug:
+    #     wandb=print
     
     if args.train or args.finetune: # Print arguments
         print("----------------- Args -------------------")

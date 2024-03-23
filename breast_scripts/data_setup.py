@@ -13,14 +13,40 @@ from torchvision.datasets import ImageFolder
 
 from typing import Union
 
-global std, mean
+#global std, mean
 
-DDSM_CBIS_Padd_mean = 0.2806
-DDSM_CBIS_Padd_std = 0.2567
+def define_mean_std(dataset:str) -> tuple:
+    """This function defines the mean and standard deviation for the dataset.
 
-mean = DDSM_CBIS_Padd_mean
-std = DDSM_CBIS_Padd_std
+    Args:
+        dataset (str): Dataset name.
 
+    Returns:
+        tuple: mean, std.
+    """
+    
+    # if dataset=="MIAS_CLAHE-mass_normal":
+    #     return 0.3229, 0.2409
+    # elif dataset=="MIAS_CLAHE-benign_malignant":
+    #     return 0.3254, 0.2403
+    # elif dataset=="CBIS_CLAHE-benign_malignant":
+    #     return 0.3040, 0.2678
+    
+    if dataset=="DDSM_CLAHE-mass_normal":
+        return 0.2333, 0.2410
+    elif dataset=="DDSM+CBIS_CLAHE-mass_normal":
+        return 0.2505, 0.2497
+    elif dataset=="DDSM_CLAHE-benign_malignant":
+        return 0.2693, 0.2504
+    elif dataset=="DDSM+CBIS_CLAHE-benign_malignant":
+        return 0.2807, 0.2567
+    elif dataset=="DDSM+CBIS+MIAS_CLAHE-benign_malignant":
+        return 0.2820, 0.2563
+    else:
+        ValueError('Dataset not found.')
+        
+    return None, None
+        
 def Gray_PIL_Loader_Wo_He(path: str) -> Image.Image:
     """This function opens the image using PIL and converts it to grayscale.
     Then resizes the grayscale image to a square shape (width equals height) using bilinear interpolation  
@@ -170,10 +196,10 @@ def General_Img_Transform(t:list, input_size:int=224, args=None) -> transforms.C
     if args.breast_padding: 
         t.append(transforms.Lambda(padding_image_one_side))
         
+    mean, std = define_mean_std(args.dataset)
     t.append(transforms.Normalize(mean=[mean], std=[std]))
     
-    if input_size != 224:
-        t.append(transforms.Resize([224, 224], antialias=args.breast_antialias))
+    t.append(transforms.Resize([224, 224], antialias=args.breast_antialias))
         
     if args.breast_transform_left:
         t.append(transforms.Lambda(transform_images_to_left))

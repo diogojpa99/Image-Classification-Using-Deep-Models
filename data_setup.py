@@ -16,7 +16,8 @@ def Build_Dataset(data_path, input_size, args):
     if args.dataset_type == 'Skin':
         return skin_data_setup.Build_Dataset(True, data_path, args), skin_data_setup.Build_Dataset(False, data_path, args)
     elif args.dataset_type == 'Breast':
-        setup_clahe(args.dataset, args)
+        if args.breast_clahe:
+            setup_clahe(args.testset, args)
         if args.finetune or args.train:
             return breast_data_setup.Build_Datasets(data_path, input_size, args)
         else: 
@@ -48,5 +49,5 @@ def setup_clahe(dataset, args):
     if 'CMMD' in dataset:
         args.clahe_clip_limit = 5.0
         
-    print('CLAHE clip limit: {}'.format(args.clahe_clip_limit))
+    print('[Info] - CLAHE clip limit: {}'.format(args.clahe_clip_limit))
         

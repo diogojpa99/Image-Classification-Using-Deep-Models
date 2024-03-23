@@ -38,13 +38,13 @@ def Define_Model(model:str,
         model = torchvision.models.resnet50(weights=torchvision.models.ResNet50_Weights.IMAGENET1K_V1) if args.finetune else torchvision.models.resnet50()
         model.fc = nn.Linear(model.fc.in_features, nb_classes) 
     elif model == 'vgg16': 
-        model = torchvision.models.vgg16(weights=torchvision.models.VGG16_Weights.IMAGENET1K_V1, dropout=drop) if args.finetune else torchvision.models.vgg16(dropout=drop)
+        model = torchvision.models.vgg16(weights=torchvision.models.VGG16_Weights.IMAGENET1K_V1) if args.finetune else torchvision.models.vgg16()
         model.classifier[-1] = nn.Linear(model.classifier[-1].in_features, nb_classes)
     elif model == 'densenet169':
-        model = torchvision.models.densenet169(weights=torchvision.models.DenseNet169_Weights.IMAGENET1K_V1, drop_rate=drop) if args.finetune else torchvision.models.densenet169(drop_rate=drop)
+        model = torchvision.models.densenet169(weights=torchvision.models.DenseNet169_Weights.IMAGENET1K_V1) if args.finetune else torchvision.models.densenet169()
         model.classifier = nn.Linear(model.classifier.in_features, nb_classes)
     elif model == 'efficientnet_b3':
-        model = torchvision.models.efficientnet_b3(weights=torchvision.models.EfficientNet_B3_Weights.IMAGENET1K_V1, dropout=drop) if args.finetune else torchvision.models.efficientnet_b3(dropout=drop)
+        model = torchvision.models.efficientnet_b3(weights=torchvision.models.EfficientNet_B3_Weights.IMAGENET1K_V1) if args.finetune else torchvision.models.efficientnet_b3()
         model.classifier[-1] = nn.Linear(model.classifier[-1].in_features, nb_classes)
     elif model == 'vit_b_16':
         model = torchvision.models.vit_b_16(weights=torchvision.models.ViT_B_16_Weights.IMAGENET1K_V1, dropout=drop) if args.finetune else torchvision.models.vit_b_16(dropout=drop)
